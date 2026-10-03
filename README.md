@@ -1,4 +1,4 @@
-# Matek Ambis — Portal Informasi Lomba
+# Matek Ambis (Informasi Lomba)
 
 Portal kompetisi mahasiswa dan pelajar dari Departemen Radian HMDM FMIPA UI 2026. Dibangun dengan HTML, CSS, dan JavaScript vanilla, tanpa framework atau proses build.
 

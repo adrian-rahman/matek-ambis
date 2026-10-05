@@ -915,9 +915,17 @@ dialog {
   overflow: hidden;
 }
 
+dialog:not([open]) {
+  display: none !important;
+}
+
 dialog[open] {
   display: flex;
   flex-direction: column;
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  z-index: 9999;
 }
 
 dialog::backdrop {

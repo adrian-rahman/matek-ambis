@@ -633,9 +633,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // 11. Card Event Delegation
   // ========================================================================
   elements.lombaGrid.addEventListener("click", (e) => {
-    // Check if clicked on poster thumbnail
+    // 1. Check if clicked on poster thumbnail
     const posterEl = e.target.closest(".card-poster");
     if (posterEl) {
+      e.stopPropagation();
       const id = posterEl.dataset.id;
       const lomba = allLomba.find(item => item.id === id);
       if (lomba && lomba.posterUrl) {
@@ -644,24 +645,42 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // 2. Check if clicked on action button
     const btn = e.target.closest("button[data-action]");
-    if (!btn) return;
+    if (btn) {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      const lomba = allLomba.find(item => item.id === id);
+      if (!lomba) return;
 
-    const action = btn.dataset.action;
-    const id = btn.dataset.id;
-    const lomba = allLomba.find(item => item.id === id);
-    if (!lomba) return;
+      if (action === "detail") {
+        openDetailModal(lomba);
+      } else if (action === "bookmark") {
+        toggleBookmark(id);
+      } else if (action === "share") {
+        shareLomba(lomba);
+      } else if (action === "edit") {
+        openEditModal(lomba);
+      } else if (action === "delete") {
+        handleDeleteLomba(lomba);
+      }
+      return;
+    }
 
-    if (action === "detail") {
-      openDetailModal(lomba);
-    } else if (action === "bookmark") {
-      toggleBookmark(id);
-    } else if (action === "share") {
-      shareLomba(lomba);
-    } else if (action === "edit") {
-      openEditModal(lomba);
-    } else if (action === "delete") {
-      handleDeleteLomba(lomba);
+    // 3. Mobile touch-friendly: tapping anywhere on card title or body also opens detail
+    const cardContent = e.target.closest(".card-content");
+    if (cardContent) {
+      const card = cardContent.closest(".lomba-card");
+      const detailBtn = card ? card.querySelector('button[data-action="detail"]') : null;
+      if (detailBtn) {
+        e.stopPropagation();
+        const id = detailBtn.dataset.id;
+        const lomba = allLomba.find(item => item.id === id);
+        if (lomba) {
+          openDetailModal(lomba);
+        }
+      }
     }
   });
 
@@ -721,27 +740,17 @@ document.addEventListener("DOMContentLoaded", () => {
     dialogs.forEach(dialog => {
       if (!dialog) return;
 
-      if (!("closedBy" in HTMLDialogElement.prototype)) {
-        dialog.addEventListener("click", (event) => {
-          if (event.target !== dialog) return;
-
-          const rect = dialog.getBoundingClientRect();
-          const isDialogContent = (
-            rect.top <= event.clientY &&
-            event.clientY <= rect.top + rect.height &&
-            rect.left <= event.clientX &&
-            event.clientX <= rect.width + rect.left
-          );
-
-          if (!isDialogContent) {
-            dialog.close();
-          }
-        });
-      }
+      dialog.addEventListener("click", (event) => {
+        // Hanya tutup jika yang diklik adalah backdrop di luar kotak modal
+        if (event.target === dialog) {
+          dialog.close();
+        }
+      });
     });
   }
 
   function openDetailModal(lomba) {
+    if (!lomba) return;
     activeModalLombaId = lomba.id;
     const regStatus = calculateRegistrationStatus(lomba.tanggalMulai, lomba.tanggalSelesai);
     const feeNum = Number(lomba.biaya) || 0;
@@ -789,7 +798,17 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.modalRegisterBtn.innerHTML = `<i class="fa-solid fa-arrow-up-right-from-square"></i> ${["upcoming", "closed"].includes(regStatus.status) ? "Lihat situs resmi" : "Daftar sekarang"}`;
 
     updateModalBookmarkButton(lomba.id);
-    elements.detailModal.showModal();
+
+    // Buka modal secara aman (mendukung touch di peramban mobile)
+    setTimeout(() => {
+      try {
+        if (!elements.detailModal.open) {
+          elements.detailModal.showModal();
+        }
+      } catch (err) {
+        console.error("Gagal membuka detailModal:", err);
+      }
+    }, 10);
   }
 
   function updateModalBookmarkButton(id) {
@@ -835,7 +854,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (elements.formTanggalMulai) elements.formTanggalMulai.value = todayStr;
     if (elements.formTanggalSelesai) elements.formTanggalSelesai.min = todayStr;
 
-    elements.submitModal.showModal();
+    setTimeout(() => {
+      try {
+        if (!elements.submitModal.open) elements.submitModal.showModal();
+      } catch (err) {
+        console.error("Gagal membuka submitModal:", err);
+      }
+    }, 10);
   }
 
   function openEditModal(lomba) {
@@ -871,7 +896,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     showFormPosterPreview(currentPosterDataUrl);
 
-    elements.submitModal.showModal();
+    setTimeout(() => {
+      try {
+        if (!elements.submitModal.open) elements.submitModal.showModal();
+      } catch (err) {
+        console.error("Gagal membuka submitModal:", err);
+      }
+    }, 10);
   }
 
   async function handleDeleteLomba(lomba) {

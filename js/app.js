@@ -14,7 +14,15 @@ document.addEventListener("DOMContentLoaded", () => {
     CATEGORIES: "matek_ambis_categories"
   };
 
-  const ADMIN_PIN = "admin123";
+  // SHA-256 hash of admin password (NawirLevi)
+  const ADMIN_PASSWORD_HASH = "ae2e3d42acbb002987a27fdfe1e1af33b45fc276841a02d90ad6147ef8baf395";
+
+  async function sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  }
   let isAdmin = sessionStorage.getItem("matek_ambis_admin") === "true";
 
   // Load custom/initial data from LocalStorage
@@ -135,6 +143,7 @@ document.addEventListener("DOMContentLoaded", () => {
   checkAdminHashRoute();
   renderLombaList();
   setupEventListeners();
+  initDataFromSupabase();
 
   // ========================================================================
   // 4. Data Loading & Persistence
@@ -187,6 +196,23 @@ document.addEventListener("DOMContentLoaded", () => {
       console.warn("Gagal memuat data dari localStorage:", e);
     }
     return [...DEFAULT_LOMBA];
+  }
+
+  async function initDataFromSupabase() {
+    if (typeof fetchLombaFromSupabase !== "function") return;
+    try {
+      const remoteData = await fetchLombaFromSupabase();
+      if (Array.isArray(remoteData) && remoteData.length > 0) {
+        allLomba = remoteData;
+        saveLombaData();
+        syncCategoriesWithLomba();
+        renderFilterCategoryOptions();
+        renderFormCategoryOptions();
+        renderLombaList();
+      }
+    } catch (e) {
+      console.warn("Gagal memuat data dari Supabase, menggunakan data lokal:", e);
+    }
   }
 
   function saveLombaData() {
@@ -269,11 +295,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function handleAdminPinSubmit(e) {
+  async function handleAdminPinSubmit(e) {
     e.preventDefault();
     const enteredPin = elements.adminPinInput.value.trim();
+    const enteredHash = await sha256(enteredPin);
 
-    if (enteredPin === ADMIN_PIN) {
+    if (enteredHash === ADMIN_PASSWORD_HASH) {
       isAdmin = true;
       sessionStorage.setItem("matek_ambis_admin", "true");
       if (elements.pinErrorMsg) elements.pinErrorMsg.style.display = "none";
@@ -284,7 +311,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       if (elements.pinErrorMsg) {
         elements.pinErrorMsg.style.display = "block";
-        elements.pinErrorMsg.textContent = "PIN salah. Coba lagi (default: admin123)";
+        elements.pinErrorMsg.textContent = "Password admin salah. Silakan coba lagi.";
       }
       elements.adminPinInput.select();
     }
@@ -847,9 +874,19 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.submitModal.showModal();
   }
 
-  function handleDeleteLomba(lomba) {
+  async function handleDeleteLomba(lomba) {
     const isConfirmed = confirm(`Apakah Anda yakin ingin menghapus lomba "${lomba.judul}"? Tindakan ini tidak dapat dibatalkan.`);
     if (!isConfirmed) return;
+
+    if (typeof deleteLombaFromSupabase === "function") {
+      try {
+        await deleteLombaFromSupabase(lomba.id);
+      } catch (err) {
+        console.error("Gagal menghapus dari Supabase:", err);
+        showToast("Gagal menghapus dari database: " + (err.message || err), "danger");
+        return;
+      }
+    }
 
     allLomba = allLomba.filter(item => item.id !== lomba.id);
     favoriteIds.delete(lomba.id);
@@ -859,7 +896,7 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast(`Lomba "${lomba.judul.substring(0, 25)}..." berhasil dihapus`, "info");
   }
 
-  function handleFormSubmit(e) {
+  async function handleFormSubmit(e) {
     e.preventDefault();
 
     const editId = elements.formLombaId.value.trim();
@@ -896,12 +933,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const posterUrlToSave = currentPosterDataUrl || "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop&q=80";
 
-    if (editId) {
-      // Edit existing
-      const existingIdx = allLomba.findIndex(item => item.id === editId);
-      if (existingIdx !== -1) {
-        allLomba[existingIdx] = {
-          ...allLomba[existingIdx],
+    const originalBtnText = elements.submitFormBtn.innerHTML;
+    elements.submitFormBtn.disabled = true;
+    elements.submitFormBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
+
+    try {
+      if (editId) {
+        // Edit existing
+        const updatedItem = {
           judul,
           penyelenggara,
           kategori,
@@ -912,31 +951,54 @@ document.addEventListener("DOMContentLoaded", () => {
           biaya,
           deskripsi
         };
-        showToast("Perubahan informasi lomba berhasil disimpan!", "success");
+
+        if (typeof updateLombaInSupabase === "function") {
+          await updateLombaInSupabase(editId, updatedItem);
+        }
+
+        const existingIdx = allLomba.findIndex(item => item.id === editId);
+        if (existingIdx !== -1) {
+          allLomba[existingIdx] = {
+            ...allLomba[existingIdx],
+            ...updatedItem
+          };
+          showToast("Perubahan informasi lomba berhasil disimpan ke database!", "success");
+        }
+      } else {
+        // Create new
+        const newLomba = {
+          id: `lomba-custom-${Date.now()}`,
+          judul,
+          penyelenggara,
+          kategori,
+          posterUrl: posterUrlToSave,
+          linkPendaftaran,
+          tanggalMulai,
+          tanggalSelesai,
+          biaya,
+          deskripsi
+        };
+
+        if (typeof insertLombaToSupabase === "function") {
+          await insertLombaToSupabase(newLomba);
+        }
+
+        allLomba.unshift(newLomba);
+        showToast("Lomba baru berhasil dipublikasikan ke database!", "success");
       }
-    } else {
-      // Create new
-      const newLomba = {
-        id: `lomba-custom-${Date.now()}`,
-        judul,
-        penyelenggara,
-        kategori,
-        posterUrl: posterUrlToSave,
-        linkPendaftaran,
-        tanggalMulai,
-        tanggalSelesai,
-        biaya,
-        deskripsi
-      };
-      allLomba.unshift(newLomba);
-      showToast("Lomba baru berhasil dipublikasikan!", "success");
+
+      saveLombaData();
+      renderLombaList();
+
+      elements.submitLombaForm.reset();
+      elements.submitModal.close();
+    } catch (err) {
+      console.error("Gagal menyimpan data lomba ke Supabase:", err);
+      showToast("Gagal menyimpan ke database: " + (err.message || err), "danger");
+    } finally {
+      elements.submitFormBtn.disabled = false;
+      elements.submitFormBtn.innerHTML = originalBtnText;
     }
-
-    saveLombaData();
-    renderLombaList();
-
-    elements.submitLombaForm.reset();
-    elements.submitModal.close();
   }
 
   // ========================================================================

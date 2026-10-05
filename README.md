@@ -18,7 +18,7 @@ Buka `index.html` langsung di browser, atau sajikan folder ini menggunakan serve
 
 - Dropdown kategori untuk memilih bidang lomba.
 - Pencarian judul, penyelenggara, kategori, dan deskripsi. Tekan `/` untuk fokus ke pencarian.
-- Filter biaya dan status: masih buka, segera dibuka, segera ditutup, atau ditutup.
+- Tombol pill Gratis/Berbayar untuk filter biaya; tekan pilihan aktif sekali lagi untuk menampilkan semua biaya. Filter status mencakup masih buka, segera dibuka, segera ditutup, dan ditutup.
 - Urutkan berdasarkan deadline, nama, atau biaya.
 - Bookmark dan preferensi tema tersimpan di browser melalui `localStorage`.
 - Detail kompetisi, periode pendaftaran, serta tautan menuju situs resmi.

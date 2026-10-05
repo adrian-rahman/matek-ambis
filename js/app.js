@@ -46,7 +46,7 @@ document.addEventListener("DOMContentLoaded", () => {
     heroSearchInput: document.getElementById("heroSearchInput"),
     clearSearchBtn: document.getElementById("clearSearchBtn"),
     filterKategoriSelect: document.getElementById("filterKategoriSelect"),
-    filterBiaya: document.getElementById("filterBiaya"),
+    feePills: document.querySelectorAll(".fee-pill"),
     filterStatus: document.getElementById("filterStatus"),
     sortBySelect: document.getElementById("sortBySelect"),
     resetFiltersBtn: document.getElementById("resetFiltersBtn"),
@@ -54,7 +54,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // Tabs & Nav
     tabAllLomba: document.getElementById("tabAllLomba"),
     tabSavedLomba: document.getElementById("tabSavedLomba"),
-    navFavoritesLink: document.getElementById("navFavoritesLink"),
     themeToggleBtn: document.getElementById("themeToggleBtn"),
 
     // Admin Controls
@@ -1101,13 +1100,14 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Biaya Filter
-    if (elements.filterBiaya) {
-      elements.filterBiaya.addEventListener("change", (e) => {
-        filterState.biaya = e.target.value;
+    // Pilihan biaya: tombol yang aktif dapat ditekan lagi untuk menampilkan semuanya.
+    elements.feePills.forEach(button => {
+      button.addEventListener("click", () => {
+        filterState.biaya = filterState.biaya === button.dataset.fee ? "semua" : button.dataset.fee;
+        updateFeePills();
         renderLombaList();
       });
-    }
+    });
 
     // Status Filter
     if (elements.filterStatus) {
@@ -1137,15 +1137,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (elements.tabSavedLomba) {
       elements.tabSavedLomba.addEventListener("click", () => switchTab("saved"));
-    }
-
-    if (elements.navFavoritesLink) {
-      elements.navFavoritesLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        switchTab("saved");
-        const el = document.getElementById("eksplor");
-        if (el) el.scrollIntoView({ behavior: "smooth" });
-      });
     }
 
     // Detail Modal Actions
@@ -1198,12 +1189,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (elements.heroSearchInput) elements.heroSearchInput.value = "";
     if (elements.filterKategoriSelect) elements.filterKategoriSelect.value = "semua";
-    if (elements.filterBiaya) elements.filterBiaya.value = "semua";
+    updateFeePills();
     if (elements.filterStatus) elements.filterStatus.value = "semua";
     if (elements.sortBySelect) elements.sortBySelect.value = "deadline-asc";
 
     renderLombaList();
     showToast("Filter berhasil diatur ulang", "info");
+  }
+
+  function updateFeePills() {
+    elements.feePills.forEach(button => {
+      const selected = button.dataset.fee === filterState.biaya;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-pressed", String(selected));
+    });
   }
 
   // ========================================================================

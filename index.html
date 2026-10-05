@@ -59,9 +59,6 @@
       </a>
 
       <div class="nav-actions">
-        <a class="nav-link active" href="#eksplor">Eksplor lomba</a>
-        <a class="nav-link" id="navFavoritesLink" href="#eksplor"><i class="fa-regular fa-bookmark" aria-hidden="true"></i> Tersimpan</a>
-        <a class="admin-entry-link" id="adminEntryLink" href="#admin" aria-label="Masuk admin" title="Masuk admin"><i class="fa-solid fa-lock" aria-hidden="true"></i></a>
         <!-- Theme Toggle Button -->
         <button id="themeToggleBtn" class="theme-toggle-btn" aria-label="Ganti Tema Gelap/Terang" title="Ganti Tema">
           <i class="fa-solid fa-moon"></i>
@@ -101,7 +98,7 @@
     </div>
 
     <!-- ==========================================================================
-         Control Panel (Sticky Search & Filter Bar)
+         Control Panel (Search & Filter Bar)
          ========================================================================== -->
     <div class="control-panel-wrapper" id="eksplorWrapper">
       <div class="control-panel" id="eksplor">
@@ -123,13 +120,6 @@
               <option value="semua">Semua Kategori</option>
             </select>
 
-            <!-- Biaya Filter -->
-            <select id="filterBiaya" class="select-filter" aria-label="Filter Biaya">
-              <option value="semua">Semua Biaya</option>
-              <option value="gratis">Gratis (Free)</option>
-              <option value="berbayar">Berbayar</option>
-            </select>
-
             <!-- Status Filter -->
             <select id="filterStatus" class="select-filter" aria-label="Filter Status">
               <option value="semua">Semua Status</option>
@@ -145,6 +135,12 @@
               <option value="title-asc">Nama (A-Z)</option>
               <option value="biaya-asc">Biaya Termurah</option>
             </select>
+
+            <!-- Biaya Filter: tekan tombol aktif sekali lagi untuk melihat semua biaya -->
+            <div class="fee-filter" role="group" aria-label="Filter biaya pendaftaran">
+              <button type="button" class="fee-pill" data-fee="gratis" aria-pressed="false">Gratis</button>
+              <button type="button" class="fee-pill" data-fee="berbayar" aria-pressed="false">Berbayar</button>
+            </div>
           </div>
 
         </div>

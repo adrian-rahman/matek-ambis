@@ -908,8 +908,9 @@ dialog {
   padding: 0;
   margin: auto;
   max-width: 560px;
-  width: 92%;
+  width: calc(100% - 32px);
   max-height: 90vh;
+  max-height: 90dvh;
   box-shadow: var(--shadow-lg);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -919,12 +920,19 @@ dialog:not([open]) {
   display: none !important;
 }
 
+/* display:block (bukan flex): flex di <dialog> membuat tinggi collapse jadi
+   1 garis di Safari iOS. Centering mengandalkan margin:auto + fixed inset. */
 dialog[open] {
-  display: flex;
-  flex-direction: column;
+  display: block;
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   margin: auto;
+  height: fit-content;
+  max-height: 90vh;
+  max-height: 90dvh;
   z-index: 9999;
 }
 
@@ -941,7 +949,7 @@ dialog::backdrop {
   display: flex;
   flex-direction: column;
   max-height: 90vh;
-  height: 100%;
+  max-height: 90dvh;
   overflow: hidden;
   width: 100%;
 }
@@ -953,7 +961,6 @@ form.modal-container {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  height: 100%;
 }
 
 .modal-header {

@@ -29,9 +29,3 @@ Buka `index.html` langsung di browser, atau sajikan folder ini menggunakan serve
 - Mode admin melalui `#admin` untuk menambah, mengedit, dan menghapus data lokal.
 
 Hero sedang disembunyikan untuk meninjau tampilan katalog yang lebih ringkas. Hapus atribut `hidden` pada elemen `.hero` di `index.html` untuk menampilkannya kembali.
-
-## Catatan data & Supabase
-
-Katalog lomba kini terhubung langsung ke database PostgreSQL cloud melalui Supabase (`https://pipqfumevyqrbawpiemu.supabase.co`). Operasi penambahan, pembaruan, dan penghapusan lomba tersimpan permanen di cloud dan tersinkronisasi untuk seluruh pengunjung. Bookmark tetap tersimpan di `localStorage` per peramban pengunjung. Akses administrator dilindungi dengan password hash SHA-256.
-
-Font, ikon Font Awesome, dan gambar contoh menggunakan sumber eksternal. Apabila gambar gagal dimuat, kartu menampilkan placeholder.

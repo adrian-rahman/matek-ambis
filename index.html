@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matek Ambis - Portal Informasi Lomba</title>
+  <meta name="description" content="Kumpulan informasi lomba, olimpiade matematika, sains, coding IT, LKTI, dan kompetisi mahasiswa & pelajar terlengkap by Radian.">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="assets/radian-logo.png">
+
+  <!-- Google Fonts: Outfit (Titles/Brand) & Plus Jakarta Sans (Body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#eksplor">Langsung ke pencarian lomba</a>
+
+  <div class="wrap">
+
+    <!-- ==========================================================================
+         Admin Bar (Visible only when #admin is authenticated)
+         ========================================================================== -->
+    <div id="adminTopBar" class="admin-top-bar" style="display: none;">
+      <div class="admin-bar-inner">
+        <div class="admin-bar-info">
+          <span class="admin-status-dot"></span>
+          <span class="admin-badge-text"><i class="fa-solid fa-user-shield"></i> Mode Administrator Aktif</span>
+        </div>
+        <div class="admin-bar-actions">
+          <button id="adminAddLombaBtn" class="cta-btn-sm" type="button">
+            <i class="fa-solid fa-plus"></i> Tambah Lomba
+          </button>
+          <button id="adminLogoutBtn" class="admin-btn-logout" type="button" title="Keluar dari Mode Admin" aria-label="Keluar dari Mode Admin">
+            <i class="fa-solid fa-right-from-bracket"></i> Keluar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================================================
+         Header Navigation (.top-nav)
+         ========================================================================== -->
+    <nav class="top-nav" aria-label="Navigasi utama">
+      <a href="./" class="brand" aria-label="Matek Ambis - Beranda">
+        <img src="assets/radian-logo.png" alt="Radian Logo" class="brand-logo">
+        <div class="brand-divider"></div>
+        <div>
+          <div class="brand-title">Matek Ambis</div>
+          <div class="brand-subtitle">by Departemen Radian HMDM FMIPA UI 2026</div>
+        </div>
+      </a>
+
+      <div class="nav-actions">
+        <!-- Theme Toggle Button -->
+        <button id="themeToggleBtn" class="theme-toggle-btn" aria-label="Ganti Tema Gelap/Terang" title="Ganti Tema">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </nav>
+
+    <!-- ==========================================================================
+         Hero Banner (.hero)
+         ========================================================================== -->
+    <main>
+    <!-- Hero dihapus (Okt 2026): katalog ringkas tanpa banner. Skip-link tetap ke #eksplor. -->
+    <div class="explore-heading">
+      <div><span class="eyebrow">TEMUKAN PELUANGMU</span><h1>Eksplor kompetisi</h1><p>Satu tempat untuk ambisi yang beragam.</p></div>
+      <div class="view-toggle-group" role="group" aria-label="Tampilan lomba">
+        <button class="view-tab-btn active" id="tabAllLomba" aria-pressed="true">Semua lomba</button>
+        <button class="view-tab-btn" id="tabSavedLomba" aria-pressed="false"><i class="fa-regular fa-bookmark" aria-hidden="true"></i> Tersimpan <span class="tab-badge-sm" id="savedCountBadge">0</span></button>
+      </div>
+    </div>
+
+    <!-- ==========================================================================
+         Control Panel (Search & Filter Bar)
+         ========================================================================== -->
+    <div class="control-panel-wrapper" id="eksplorWrapper">
+      <div class="control-panel" id="eksplor" tabindex="-1" aria-label="Panel pencarian dan filter lomba">
+        <!-- Search Row -->
+        <div class="search-row">
+          <div class="search-wrapper">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="search" id="heroSearchInput" class="search-input" aria-label="Cari lomba, penyelenggara, atau kata kunci" placeholder="Cari lomba, penyelenggara, atau kata kunci…">
+            <button id="clearSearchBtn" class="clear-search-btn" title="Hapus pencarian" aria-label="Hapus pencarian"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>
+
+        <!-- Filters & View Tabs Row -->
+        <div class="filter-pills-row" id="filterPillsRow">
+          <div class="selects-group">
+            <!-- Kategori Dropdown Filter -->
+            <select id="filterKategoriSelect" class="select-filter" aria-label="Filter Kategori">
+              <option value="semua">Semua Kategori</option>
+            </select>
+
+            <!-- Status Filter -->
+            <select id="filterStatus" class="select-filter" aria-label="Filter Status">
+              <option value="semua">Semua Status</option>
+              <option value="aktif">Masih Buka</option>
+              <option value="upcoming">Segera Dibuka</option>
+              <option value="urgent">Segera Ditutup</option>
+              <option value="selesai">Ditutup</option>
+            </select>
+
+            <!-- Sort Dropdown -->
+            <select id="sortBySelect" class="select-filter" aria-label="Urutkan">
+              <option value="deadline-asc">Deadline Terdekat</option>
+              <option value="title-asc">Nama (A-Z)</option>
+              <option value="biaya-asc">Biaya Termurah</option>
+            </select>
+
+            <!-- Biaya Filter: tekan tombol aktif sekali lagi untuk melihat semua biaya -->
+            <div class="fee-filter" role="group" aria-label="Filter biaya pendaftaran">
+              <button type="button" class="fee-pill" data-fee="gratis" aria-pressed="false">Gratis</button>
+              <button type="button" class="fee-pill" data-fee="berbayar" aria-pressed="false">Berbayar</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Status / Count Bar -->
+    <div class="status-bar">
+      <div class="status-info">
+        <span class="status-dot"></span>
+        <span id="resultsCountBadge" role="status" aria-live="polite">Memuat kompetisi…</span>
+      </div>
+      <button id="resetFiltersBtn" class="pill-btn">
+        <i class="fa-solid fa-rotate-left"></i> Reset Filter
+      </button>
+    </div>
+
+    <!-- ==========================================================================
+         Lomba Cards Grid Container (.grid-container)
+         ========================================================================== -->
+    <div class="grid-container" id="lombaGrid">
+      <!-- Injected by app.js -->
+    </div>
+
+    </main>
+
+    <!-- ==========================================================================
+         Footer (.site-footer)
+         ========================================================================== -->
+    <footer class="site-footer">
+      <div class="footer-meta">Dikembangkan untuk Mahasiswa Departemen Matematika FMIPA UI</div>
+    </footer>
+
+  </div><!-- /.wrap -->
+
+  <!-- ==========================================================================
+       Modal Detail Lomba (Native <dialog> with closedby="any")
+       ========================================================================== -->
+  <dialog id="detailModal" aria-labelledby="modalDetailTitle">
+    <div class="modal-container">
+      <!-- Modal Header -->
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="modalDetailTitle">Judul Lomba</h2>
+          <div class="card-organizer" id="modalDetailOrganizer" style="margin-top: 4px; margin-bottom: 0;">
+            <i class="fa-solid fa-building-columns"></i> Penyelenggara
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeDetailModalBtn" aria-label="Tutup Detail">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="modal-body">
+        
+        <!-- Poster Preview in Modal -->
+        <div class="modal-poster-wrap" id="modalDetailPosterWrap" style="display: none;">
+          <img id="modalDetailPosterImg" src="" alt="Poster lomba" class="modal-poster-img">
+          <button type="button" id="btnZoomModalPoster" class="btn-zoom-poster" title="Lihat Poster Penuh" aria-label="Lihat poster ukuran penuh">
+            <i class="fa-solid fa-magnifying-glass-plus"></i> Lihat Poster Penuh
+          </button>
+        </div>
+
+        <!-- Biaya & Status Countdown Highlight -->
+        <div class="modal-highlight-box">
+          <div>
+            <div style="font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase;">Biaya Pendaftaran</div>
+            <div style="font-size: 16px; font-weight: 800; color: var(--primary); font-family: 'Outfit', sans-serif;" id="modalDetailBiaya">Gratis (Free)</div>
+          </div>
+          <div id="modalDetailCountdown">
+            <!-- Countdown Pill -->
+          </div>
+        </div>
+
+        <!-- Badges list (Kategori & Biaya) -->
+        <div class="badges-wrap" id="modalDetailBadges">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Periode Pendaftaran -->
+        <div>
+          <div class="modal-section-title">
+            <i class="fa-solid fa-calendar-days"></i> Periode Pendaftaran
+          </div>
+          <div class="card-info-box" style="margin-top: 6px;">
+            <div class="info-box-row">
+              <span class="label">Mulai Pendaftaran:</span>
+              <span id="modalDetailTglMulai" style="font-weight: 600; color: var(--text-main);">-</span>
+            </div>
+            <div class="info-box-row">
+              <span class="label">Batas Akhir (Deadline):</span>
+              <span id="modalDetailTglSelesai" style="font-weight: 600; color: var(--primary);">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Deskripsi -->
+        <div>
+          <div class="modal-section-title">
+            <i class="fa-solid fa-circle-info"></i> Deskripsi &amp; Informasi Lomba
+          </div>
+          <div class="modal-desc-box" id="modalDetailDesc">
+            Deskripsi lengkap lomba...
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="modalBookmarkActionBtn">
+          <i class="fa-regular fa-bookmark"></i> Simpan
+        </button>
+        <a href="./" target="_blank" rel="noopener noreferrer" class="cta-btn-sm" id="modalRegisterBtn">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> Daftar Sekarang
+        </a>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ==========================================================================
+       Modal Kelola Info Lomba (Tambah / Edit)
+       ========================================================================== -->
+  <dialog id="submitModal" aria-labelledby="modalSubmitTitle">
+    <form id="submitLombaForm" class="modal-container">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="modalSubmitTitle">Tambah Informasi Lomba</h2>
+          <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+            Publikasikan atau sunting kompetisi untuk peserta mahasiswa dan pelajar.
+          </p>
+        </div>
+        <button class="modal-close-btn" id="closeSubmitModalBtn" type="button" aria-label="Tutup Form">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <input type="hidden" id="formLombaId" value="">
+      <div class="modal-body">
+        <div class="form-grid">
+          
+          <!-- Judul Lomba -->
+          <div class="form-group form-group-full">
+            <label for="formJudul" class="form-label">Nama / Judul Lomba <span style="color:var(--primary)">*</span></label>
+            <input type="text" id="formJudul" class="form-input" placeholder="Contoh: National Data Science Challenge 2026" required>
+          </div>
+
+          <!-- Penyelenggara -->
+          <div class="form-group form-group-full">
+            <label for="formPenyelenggara" class="form-label">Instansi / Penyelenggara <span style="color:var(--primary)">*</span></label>
+            <input type="text" id="formPenyelenggara" class="form-input" placeholder="Contoh: Data Science Indonesia &amp; Kominfo" required>
+          </div>
+
+          <!-- Kategori Lomba Dropdown + Opsi Tambah Sendiri -->
+          <div class="form-group form-group-full">
+            <label for="formKategori" class="form-label">Kategori Lomba <span style="color:var(--primary)">*</span></label>
+            <select id="formKategori" class="form-select" required>
+              <option value="Data Science Competition">Data Science Competition</option>
+              <option value="Business Case Competition">Business Case Competition</option>
+              <option value="Essay Competition">Essay Competition</option>
+              <option value="Poster Competition">Poster Competition</option>
+              <option value="__custom__">+ Tambah Kategori Sendiri...</option>
+            </select>
+          </div>
+
+          <!-- Kategori Custom (Muncul saat opsi tambah sendiri dipilih) -->
+          <div class="form-group form-group-full" id="formKategoriCustomWrap" style="display: none;">
+            <label for="formKategoriCustom" class="form-label">Nama Kategori Baru <span style="color:var(--primary)">*</span></label>
+            <input type="text" id="formKategoriCustom" class="form-input" placeholder="Ketik nama kategori baru (contoh: UI/UX Design Competition)">
+          </div>
+
+          <!-- Poster Gambar Lomba -->
+          <div class="form-group form-group-full">
+            <label class="form-label">Upload Poster / Cover Lomba</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+              <input type="file" id="formPosterFile" class="form-input" accept="image/*" style="flex: 1; min-width: 180px; padding: 6px 10px;">
+              <input type="url" id="formPosterUrl" class="form-input" placeholder="Atau paste URL poster online (https://...)" style="flex: 1; min-width: 200px;">
+            </div>
+            <div id="formPosterPreviewBox" class="form-poster-preview" style="display: none;">
+              <img id="formPosterPreviewImg" src="" alt="Pratinjau poster lomba">
+              <button type="button" id="removePosterBtn" class="btn-remove-poster" title="Hapus Gambar" aria-label="Hapus gambar poster"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+            </div>
+          </div>
+
+          <!-- Link Pendaftaran -->
+          <div class="form-group form-group-full">
+            <label for="formLinkDaftar" class="form-label">Link Pendaftaran Resmi <span style="color:var(--primary)">*</span></label>
+            <input type="url" id="formLinkDaftar" class="form-input" placeholder="https://..." required>
+          </div>
+
+          <!-- Tanggal Pendaftaran: Mulai -->
+          <div class="form-group">
+            <label for="formTanggalMulai" class="form-label">Tanggal Mulai Pendaftaran <span style="color:var(--primary)">*</span></label>
+            <input type="date" id="formTanggalMulai" class="form-input" required>
+          </div>
+
+          <!-- Tanggal Pendaftaran: Selesai (Deadline) -->
+          <div class="form-group">
+            <label for="formTanggalSelesai" class="form-label">Tanggal Terakhir (Deadline) <span style="color:var(--primary)">*</span></label>
+            <input type="date" id="formTanggalSelesai" class="form-input" required>
+          </div>
+
+          <!-- Biaya Pendaftaran -->
+          <div class="form-group form-group-full">
+            <label for="formBiayaNominal" class="form-label">Biaya Pendaftaran (Rupiah) <span style="color:var(--primary)">*</span></label>
+            <input type="number" id="formBiayaNominal" class="form-input" placeholder="Isi 0 jika Gratis, atau nominal (contoh: 50000)" min="0" value="0" required>
+            <span style="font-size: 11px; color: var(--text-muted); margin-top: 3px; display: block;">
+              *Jika diisi <strong>0</strong>, otomatis tertera sebagai <strong>Gratis (Free)</strong>.
+            </span>
+          </div>
+
+          <!-- Deskripsi Singkat -->
+          <div class="form-group form-group-full">
+            <label for="formDeskripsi" class="form-label">Deskripsi / Informasi Lomba</label>
+            <textarea id="formDeskripsi" class="form-textarea" placeholder="Jelaskan ringkasan mengenai lomba, syarat umum, atau rincian penting lainnya..."></textarea>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="cancelSubmitBtn">Batal</button>
+        <button type="submit" class="cta-btn-sm" id="submitFormBtn">
+          <i class="fa-solid fa-floppy-disk"></i> Simpan Lomba
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ==========================================================================
+       Modal Login PIN Admin (Native <dialog>)
+       ========================================================================== -->
+  <dialog id="adminPinModal" aria-labelledby="modalPinTitle">
+    <form id="adminPinForm" class="modal-container modal-sm">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="modalPinTitle"><i class="fa-solid fa-lock" style="color: var(--primary);"></i> Akses Admin</h2>
+          <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+            Masukkan password administrator untuk mengelola data lomba.
+          </p>
+        </div>
+        <button class="modal-close-btn" id="closePinModalBtn" type="button" aria-label="Tutup Modal PIN">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group form-group-full">
+          <label for="adminPinInput" class="form-label">Password Admin</label>
+          <input type="password" id="adminPinInput" class="form-input" placeholder="Masukkan password admin" required autocomplete="current-password">
+          <div id="pinErrorMsg" class="pin-error-msg" style="display: none;">Password salah, silakan coba lagi.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="cancelPinBtn">Batal</button>
+        <button type="submit" class="cta-btn-sm"><i class="fa-solid fa-key"></i> Masuk Admin</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ==========================================================================
+       Modal Lightbox Poster Preview
+       ========================================================================== -->
+  <dialog id="lightboxModal" aria-label="Preview Poster">
+    <div class="lightbox-container">
+      <div class="lightbox-top-bar">
+        <span id="lightboxTitle" class="lightbox-title">Poster Lomba</span>
+        <div class="lightbox-actions">
+          <a id="lightboxDownloadBtn" href="./" target="_blank" rel="noopener" class="btn-secondary" style="padding: 4px 8px; font-size: 11px;">
+            <i class="fa-solid fa-up-right-from-square"></i> Buka Gambar Asli
+          </a>
+          <button id="closeLightboxBtn" class="modal-close-btn" aria-label="Tutup Preview">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+      <div class="lightbox-img-wrap">
+        <img id="lightboxImg" src="" alt="Poster lomba ukuran penuh">
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

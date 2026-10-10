@@ -333,6 +333,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ========================================================================
   // 6. Admin Authentication & Hash Routing (#admin)
+  // --- Dialog helpers: sinkron (gesture) + fallback iOS/Safari lama ---
+  function isDialogOpen(d) {
+    return !!d && (d.open || d.hasAttribute("open"));
+  }
+  function openDialogSafe(d) {
+    if (!d) return;
+    try {
+      if (typeof d.showModal === "function") {
+        if (!d.open) d.showModal();
+        return;
+      }
+    } catch (e) { /* lanjut ke fallback */ }
+    d.setAttribute("open", "");
+    document.body.style.overflow = "hidden";
+  }
+  function closeDialogSafe(d) {
+    if (!d) return;
+    try { if (d.open) d.close(); } catch (e) { /* abaikan */ }
+    d.removeAttribute("open");
+    if (!document.querySelector("dialog[open]")) document.body.style.overflow = "";
+  }
+
   // ========================================================================
   function checkAdminHashRoute() {
     // Selalu sembunyi dulu; hanya tampil bila sesi admin valid + tidak kedaluwarsa.
@@ -346,7 +368,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (elements.adminPinInput) elements.adminPinInput.value = "";
         if (elements.pinErrorMsg) elements.pinErrorMsg.style.display = "none";
         if (elements.adminPinModal) {
-          elements.adminPinModal.showModal();
+          openDialogSafe(elements.adminPinModal);
           setTimeout(() => elements.adminPinInput && elements.adminPinInput.focus(), 100);
         }
       }
@@ -394,7 +416,7 @@ document.addEventListener("DOMContentLoaded", () => {
         sessionStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, enteredHash.slice(0, 32));
       } catch (err) { /* sesi memori saja */ }
       if (elements.pinErrorMsg) elements.pinErrorMsg.style.display = "none";
-      elements.adminPinModal.close();
+      closeDialogSafe(elements.adminPinModal);
       if (elements.adminTopBar) elements.adminTopBar.style.display = "block";
       renderLombaList();
       showToast("Selamat datang, Administrator!", "success");
@@ -435,7 +457,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.lightboxImg.alt = `Poster lomba ${title}`;
     elements.lightboxTitle.textContent = title;
     elements.lightboxDownloadBtn.href = imageUrl;
-    elements.lightboxModal.showModal();
+    openDialogSafe(elements.lightboxModal);
   }
 
   // ========================================================================
@@ -854,9 +876,16 @@ document.addEventListener("DOMContentLoaded", () => {
       dialog.addEventListener("click", (event) => {
         // Hanya tutup jika yang diklik adalah backdrop di luar kotak modal
         if (event.target === dialog) {
-          dialog.close();
+          closeDialogSafe(dialog);
         }
       });
+    });
+    // Escape menutup dialog (untuk fallback non-native di iOS lama).
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        const open = document.querySelector("dialog[open]");
+        if (open) closeDialogSafe(open);
+      }
     });
   }
 
@@ -913,16 +942,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     updateModalBookmarkButton(lomba.id);
 
-    // Buka modal secara aman (mendukung touch di peramban mobile)
-    setTimeout(() => {
-      try {
-        if (!elements.detailModal.open) {
-          elements.detailModal.showModal();
-        }
-      } catch (err) {
-        console.error("Gagal membuka detailModal:", err);
-      }
-    }, 10);
+    // Buka sinkron dalam gesture klik (wajib untuk iOS/Safari).
+    openDialogSafe(elements.detailModal);
   }
 
   function updateModalBookmarkButton(id) {
@@ -974,13 +995,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (elements.formTanggalMulai) elements.formTanggalMulai.value = todayStr;
     if (elements.formTanggalSelesai) elements.formTanggalSelesai.min = todayStr;
 
-    setTimeout(() => {
-      try {
-        if (!elements.submitModal.open) elements.submitModal.showModal();
-      } catch (err) {
-        console.error("Gagal membuka submitModal:", err);
-      }
-    }, 10);
+    openDialogSafe(elements.submitModal);
   }
 
   function openEditModal(lomba) {
@@ -1020,13 +1035,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     showFormPosterPreview(currentPosterDataUrl);
 
-    setTimeout(() => {
-      try {
-        if (!elements.submitModal.open) elements.submitModal.showModal();
-      } catch (err) {
-        console.error("Gagal membuka submitModal:", err);
-      }
-    }, 10);
+    openDialogSafe(elements.submitModal);
   }
 
   async function handleDeleteLomba(lomba) {
@@ -1155,7 +1164,7 @@ document.addEventListener("DOMContentLoaded", () => {
       renderLombaList();
 
       elements.submitLombaForm.reset();
-      elements.submitModal.close();
+      closeDialogSafe(elements.submitModal);
     } catch (err) {
       console.error("Gagal menyimpan data lomba ke Supabase:", err);
       showToast("Gagal menyimpan ke database: " + (err.message || err), "danger");
@@ -1233,11 +1242,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (elements.closePinModalBtn) {
-      elements.closePinModalBtn.addEventListener("click", () => elements.adminPinModal.close());
+      elements.closePinModalBtn.addEventListener("click", () => closeDialogSafe(elements.adminPinModal));
     }
 
     if (elements.cancelPinBtn) {
-      elements.cancelPinBtn.addEventListener("click", () => elements.adminPinModal.close());
+      elements.cancelPinBtn.addEventListener("click", () => closeDialogSafe(elements.adminPinModal));
     }
 
     // Admin Bar buttons
@@ -1251,7 +1260,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Lightbox Modal
     if (elements.closeLightboxBtn) {
-      elements.closeLightboxBtn.addEventListener("click", () => elements.lightboxModal.close());
+      elements.closeLightboxBtn.addEventListener("click", () => closeDialogSafe(elements.lightboxModal));
     }
 
     // Form Category custom toggle
@@ -1361,7 +1370,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Detail Modal Actions
     if (elements.closeDetailModalBtn) {
-      elements.closeDetailModalBtn.addEventListener("click", () => elements.detailModal.close());
+      elements.closeDetailModalBtn.addEventListener("click", () => closeDialogSafe(elements.detailModal));
     }
 
     if (elements.modalBookmarkActionBtn) {
@@ -1374,11 +1383,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Submit Modal Actions
     if (elements.closeSubmitModalBtn) {
-      elements.closeSubmitModalBtn.addEventListener("click", () => elements.submitModal.close());
+      elements.closeSubmitModalBtn.addEventListener("click", () => closeDialogSafe(elements.submitModal));
     }
 
     if (elements.cancelSubmitBtn) {
-      elements.cancelSubmitBtn.addEventListener("click", () => elements.submitModal.close());
+      elements.cancelSubmitBtn.addEventListener("click", () => closeDialogSafe(elements.submitModal));
     }
 
     if (elements.submitLombaForm) {

@@ -74,9 +74,50 @@ async function fetchLombaFromSupabase() {
 }
 
 /**
- * WRITE aman via Edge Function terotentikasi.
- * Selalu menolak bila tidak ada endpoint / tidak ada sesi admin.
- * Frontend TIDAK lagi memanggil .insert/.update/.delete langsung.
+ * WRITE langsung via anonKey (fallback kompatibilitas).
+ * Berfungsi selama RLS masih longgar. Setelah `supabase/rls.sql` dijalankan,
+ * fungsi ini otomatis ditolak server dan frontend beralih ke `secureLombaWrite`.
+ * JANGAN pakai pola ini untuk data sensitif.
+ */
+async function insertLombaToSupabase(lomba) {
+  if (!supabaseClient) throw new Error("Supabase client belum terinisialisasi.");
+  const payload = mapLombaToDb(lomba);
+  const { data, error } = await supabaseClient
+    .from("lomba")
+    .insert([payload])
+    .select();
+
+  if (error) throw error;
+  return data && data[0] ? mapDbToLomba(data[0]) : lomba;
+}
+
+async function updateLombaInSupabase(id, updates) {
+  if (!supabaseClient) throw new Error("Supabase client belum terinisialisasi.");
+  const payload = mapLombaToDb(updates);
+  delete payload.id; // Do not update primary key
+  const { data, error } = await supabaseClient
+    .from("lomba")
+    .update(payload)
+    .eq("id", id)
+    .select();
+
+  if (error) throw error;
+  return data && data[0] ? mapDbToLomba(data[0]) : { id, ...updates };
+}
+
+async function deleteLombaFromSupabase(id) {
+  if (!supabaseClient) throw new Error("Supabase client belum terinisialisasi.");
+  const { error } = await supabaseClient
+    .from("lomba")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+  return true;
+}
+
+/**
+ * WRITE aman via Edge Function terotentikasi (jalur utama setelah RLS diketatkan).
  */
 async function secureLombaWrite(action, payload) {
   if (!SUPABASE_CONFIG.writeEndpoint) {

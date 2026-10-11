@@ -41,11 +41,11 @@ Buka `index.html` langsung di browser, atau sajikan folder ini menggunakan serve
 ## Catatan data & Supabase (diperbarui Okt 2026)
 
 Katalog lomba membaca publik dari Supabase (`https://pipqfumevyqrbawpiemu.supabase.co`).
-WRITE langsung dari browser dengan anonKey sudah dihapus. Penulisan cloud hanya via
-Supabase Edge Function terotentikasi; lihat `supabase/rls.sql` (RLS: read publik,
-write hanya service_role) dan `js/supabase.js` (`secureLombaWrite`).
-
-Tanpa Edge Function terkonfigurasi, tambah/edit/hapus tersimpan lokal saja (aman untuk demo).
+Tulis cloud berlapis: Edge Function terotentikasi dulu (`secureLombaWrite`),
+fallback tulis langsung via anonKey selama RLS masih longgar. Bila cloud tak
+terjangkau, edit/hapus/tambah dicatat sebagai overlay lokal (bertahan saat refresh).
+Lihat `supabase/rls.sql` (RLS: read publik, write hanya service_role) — setelah
+dijalankan, fallback langsung otomatis ditolak server dan wajib Edge Function.
 Bookmark, tema, dan data lokal memakai safe-storage (fallback memori bila localStorage diblokir).
 
 Akses administrator: verifikasi hash SHA-256 (plaintext tidak disimpan di repo), rate-limit

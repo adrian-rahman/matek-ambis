@@ -24,6 +24,31 @@ document.addEventListener("DOMContentLoaded", () => {
       typeof SUPABASE_CONFIG !== "undefined" && !!SUPABASE_CONFIG.writeEndpoint);
   }
 
+  // Tulis cloud berlapis: Edge Function dulu, lalu tulis langsung (selama RLS longgar).
+  // Kembalikan "edge"/"direct"; "local" bila cloud tak terjangkau (fallback overlay lokal).
+  // Error Edge Function dilempar (fatal); error tulis langsung → fallback "local".
+  async function tryCloudWrite(action, item) {
+    if (isCloudSyncEnabled()) {
+      await secureLombaWrite(action, item);
+      return "edge";
+    }
+    try {
+      if (action === "insert" && typeof insertLombaToSupabase === "function") {
+        await insertLombaToSupabase(item);
+      } else if (action === "update" && typeof updateLombaInSupabase === "function") {
+        await updateLombaInSupabase(item.id, item);
+      } else if (action === "delete" && typeof deleteLombaFromSupabase === "function") {
+        await deleteLombaFromSupabase(item.id);
+      } else {
+        return "local";
+      }
+      return "direct";
+    } catch (err) {
+      console.warn("Tulis cloud langsung gagal, fallback lokal:", err);
+      return "local";
+    }
+  }
+
   // Hash SHA-256 password admin (plaintext TIDAK disimpan di repo).
   const ADMIN_PASSWORD_HASH = "ae2e3d42acbb002987a27fdfe1e1af33b45fc276841a02d90ad6147ef8baf395";
 
@@ -1100,25 +1125,26 @@ document.addEventListener("DOMContentLoaded", () => {
     const isConfirmed = confirm(`Apakah Anda yakin ingin menghapus lomba "${lomba.judul}"? Tindakan ini tidak dapat dibatalkan.`);
     if (!isConfirmed) return;
 
-    // Cloud sync hanya via Edge Function terotentikasi (bukan anonKey langsung).
-    if (isCloudSyncEnabled()) {
-      try {
-        await secureLombaWrite("delete", { id: lomba.id });
-      } catch (err) {
-        console.error("Gagal menghapus via Edge Function:", err);
-        showToast("Gagal menghapus di cloud: " + (err.message || err), "danger");
-        return;
-      }
-      delete localOverrides[lomba.id];
-      saveOverrides();
-      deletedIds.delete(lomba.id);
-      saveDeletedIds();
-    } else {
+    // Cloud: Edge Function → tulis langsung → fallback lokal.
+    let mode = "local";
+    try {
+      mode = await tryCloudWrite("delete", { id: lomba.id });
+    } catch (err) {
+      console.error("Gagal menghapus via Edge Function:", err);
+      showToast("Gagal menghapus di cloud: " + (err.message || err), "danger");
+      return;
+    }
+    if (mode === "local") {
       // Tanpa cloud: catat sebagai "terhapus lokal" agar tidak muncul lagi saat refresh.
       deletedIds.add(lomba.id);
       saveDeletedIds();
       delete localOverrides[lomba.id];
       saveOverrides();
+    } else {
+      delete localOverrides[lomba.id];
+      saveOverrides();
+      deletedIds.delete(lomba.id);
+      saveDeletedIds();
     }
 
     allLomba = allLomba.filter(item => item.id !== lomba.id);
@@ -1126,9 +1152,9 @@ document.addEventListener("DOMContentLoaded", () => {
     saveLombaData();
     saveFavoritesData();
     renderLombaList();
-    showToast(isCloudSyncEnabled()
-      ? `Lomba "${lomba.judul.substring(0, 25)}..." berhasil dihapus`
-      : `Lomba "${lomba.judul.substring(0, 25)}..." dihapus lokal (sinkronisasi cloud belum aktif).`, "info");
+    showToast(mode === "local"
+      ? `Lomba "${lomba.judul.substring(0, 25)}..." dihapus lokal (cloud tak terjangkau).`
+      : `Lomba "${lomba.judul.substring(0, 25)}..." berhasil dihapus`, "info");
   }
 
   async function handleFormSubmit(e) {
@@ -1191,13 +1217,13 @@ document.addEventListener("DOMContentLoaded", () => {
           deskripsi
         };
 
-        if (isCloudSyncEnabled()) {
-          await secureLombaWrite("update", { id: editId, ...updatedItem });
-          delete localOverrides[editId];
-          saveOverrides();
-        } else {
+        const mode = await tryCloudWrite("update", { id: editId, ...updatedItem });
+        if (mode === "local") {
           // Tanpa cloud: simpan sebagai override lokal agar edit bertahan saat refresh.
           localOverrides[editId] = updatedItem;
+          saveOverrides();
+        } else {
+          delete localOverrides[editId];
           saveOverrides();
         }
 
@@ -1207,9 +1233,9 @@ document.addEventListener("DOMContentLoaded", () => {
             ...allLomba[existingIdx],
             ...updatedItem
           };
-          showToast(isCloudSyncEnabled()
-            ? "Perubahan informasi lomba berhasil disimpan!"
-            : "Perubahan tersimpan lokal (sinkronisasi cloud belum aktif).", "success");
+          showToast(mode === "local"
+            ? "Perubahan tersimpan lokal (cloud tak terjangkau)."
+            : "Perubahan informasi lomba berhasil disimpan!", "success");
         }
       } else {
         // Create new
@@ -1226,14 +1252,12 @@ document.addEventListener("DOMContentLoaded", () => {
           deskripsi
         };
 
-        if (isCloudSyncEnabled()) {
-          await secureLombaWrite("insert", newLomba);
-        }
+        const mode = await tryCloudWrite("insert", newLomba);
 
         allLomba.unshift(newLomba);
-        showToast(isCloudSyncEnabled()
-          ? "Lomba baru berhasil dipublikasikan!"
-          : "Lomba baru tersimpan lokal (sinkronisasi cloud belum aktif).", "success");
+        showToast(mode === "local"
+          ? "Lomba baru tersimpan lokal (cloud tak terjangkau)."
+          : "Lomba baru berhasil dipublikasikan!", "success");
       }
 
       saveLombaData();

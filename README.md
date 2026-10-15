@@ -38,9 +38,18 @@ Buka `index.html` langsung di browser, atau sajikan folder ini menggunakan serve
 5. Tambah/edit/hapus sebagai non-admin harus gagal (toast "Akses ditolak").
 6. Poster upload dikompresi otomatis (<800KB target); localStorage >4.5MB ditolak dengan toast.
 
-## Catatan data & Supabase (diperbarui Okt 2026)
+## Backend data (Okt 2026): Google Sheets + Drive
 
-Katalog lomba membaca publik dari Supabase (`https://pipqfumevyqrbawpiemu.supabase.co`).
+Backend aktif: **Sheets** (`DATA_BACKEND = "sheets"` di `js/app.js`).
+Setup 5 menit di `apps-script/README.md` (Sheet + folder Drive + deploy Web app),
+lalu isi `endpoint` + `token` di `js/sheets.js`.
+
+- Poster diupload ke **Drive** (`thumbnail` link), yang masuk Sheet hanya string URL.
+- Tanpa `endpoint`, app otomatis fallback ke Supabase/read lokal — tidak ada yang rusak.
+- Backend lama (Supabase) tetap ada di `js/supabase.js`; ganti `DATA_BACKEND`
+  ke `"supabase"` untuk kembali kapan saja.
+
+## Catatan backend Supabase (nonaktif saat ini)
 Tulis cloud berlapis: Edge Function terotentikasi dulu (`secureLombaWrite`),
 fallback tulis langsung via anonKey selama RLS masih longgar. Bila cloud tak
 terjangkau, edit/hapus/tambah dicatat sebagai overlay lokal (bertahan saat refresh).

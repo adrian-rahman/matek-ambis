@@ -24,6 +24,17 @@ document.addEventListener("DOMContentLoaded", () => {
       typeof SUPABASE_CONFIG !== "undefined" && !!SUPABASE_CONFIG.writeEndpoint);
   }
 
+  // Backend data: "sheets" (Google Sheets + Drive) atau "supabase".
+  // Lihat apps-script/README.md untuk setup Sheets.
+  const DATA_BACKEND = "sheets";
+
+  function backendFetch() {
+    if (DATA_BACKEND === "sheets" && typeof fetchLombaFromSheets === "function") {
+      return fetchLombaFromSheets();
+    }
+    return fetchLombaFromSupabase();
+  }
+
   // Tulis cloud berlapis: Edge Function dulu, lalu tulis langsung (selama RLS longgar).
   // Kembalikan "edge"/"direct"; "local" bila cloud tak terjangkau (fallback overlay lokal).
   // Error Edge Function dilempar (fatal); error tulis langsung → fallback "local".
@@ -31,6 +42,18 @@ document.addEventListener("DOMContentLoaded", () => {
     if (isCloudSyncEnabled()) {
       await secureLombaWrite(action, item);
       return "edge";
+    }
+    if (DATA_BACKEND === "sheets" && typeof sheetsEnabled === "function" && sheetsEnabled()) {
+      if (action === "insert" && typeof upsertLombaToSheets === "function") {
+        await upsertLombaToSheets(item);
+      } else if (action === "update" && typeof upsertLombaToSheets === "function") {
+        await upsertLombaToSheets(item);
+      } else if (action === "delete" && typeof deleteLombaFromSheets === "function") {
+        await deleteLombaFromSheets(item.id);
+      } else {
+        return "local";
+      }
+      return "direct";
     }
     try {
       if (action === "insert" && typeof insertLombaToSupabase === "function") {
@@ -287,9 +310,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function initDataFromSupabase() {
-    if (typeof fetchLombaFromSupabase !== "function") return;
+    let remoteData = null;
     try {
-      const remoteData = await fetchLombaFromSupabase();
+      remoteData = await backendFetch();
       if (Array.isArray(remoteData)) {
         // Gabung, bukan timpa: item lokal (belum ada di cloud) + edit/hapus lokal dipertahankan.
         const remoteIds = new Set(remoteData.map(r => r.id));
@@ -1387,12 +1410,20 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
           }
           try {
-            currentPosterDataUrl = await compressImageFile(file, 1280, 0.82);
+            const compressed = await compressImageFile(file, 1280, 0.82);
+            // Backend Sheets: upload ke Drive, yang disimpan hanya URL-nya.
+            if (DATA_BACKEND === "sheets" && typeof sheetsEnabled === "function" && sheetsEnabled()
+              && typeof uploadPosterToSheets === "function") {
+              showToast("Mengupload poster ke Drive...", "info");
+              currentPosterDataUrl = await uploadPosterToSheets(compressed, file.name);
+            } else {
+              currentPosterDataUrl = compressed;
+            }
             showFormPosterPreview(currentPosterDataUrl);
             if (elements.formPosterUrl) elements.formPosterUrl.value = "";
           } catch (err) {
             console.error("Gagal memproses poster:", err);
-            showToast("Gagal memproses gambar poster.", "danger");
+            showToast("Gagal memproses/mengupload poster: " + (err.message || err), "danger");
             elements.formPosterFile.value = "";
           }
         }

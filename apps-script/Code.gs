@@ -56,6 +56,14 @@ function setupSheet() {
   getSheet();
 }
 
+/** Jalankan ini bila upload poster error "Akses ditolak: DriveApp".
+ *  Memaksa Google meminta izin Drive. Jika tidak muncul prompt,
+ *  cabut dulu akses di myaccount.google.com/permissions lalu Run lagi. */
+function authDrive() {
+  const f = DriveApp.getRootFolder();
+  Logger.log("Drive OK: " + f.getName());
+}
+
 /** GET publik: ?action=list → { data: [...] } */
 function doGet(e) {
   try {

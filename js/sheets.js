@@ -7,8 +7,8 @@
  */
 
 const SHEETS_CONFIG = {
-  endpoint: "", // contoh: https://script.google.com/macros/s/AKf.../exec
-  token: ""     // sama dengan ADMIN_TOKEN di Script Properties
+  endpoint: "https://script.google.com/macros/s/AKfycbzvhpcliQ2wvmv4iseGEIvMSnKJ0SY6F7jNDDIIl3EOdSAE4kEs8ZSt3rPHs82WQfb2Sg/exec",
+  token: "6a4a0b99e0f17f0b717bbdd892e78812d2570266fb23238c"
 };
 
 function sheetsEnabled() {

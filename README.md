@@ -2,12 +2,16 @@
 
 Portal kompetisi mahasiswa dan pelajar dari Departemen Radian HMDM FMIPA UI 2026. Dibangun dengan HTML, CSS, dan JavaScript vanilla, tanpa framework atau proses build.
 
+Data lomba dikelola langsung di **Google Sheets**, poster disimpan di **Google Drive**. Situs bersifat **read-only** — tidak ada panel admin, tidak ada penulisan dari browser.
+
 ## Struktur
 
-- `index.html`: halaman utama, navigasi, pencarian, filter, dan dialog.
+- `index.html`: halaman utama, navigasi, pencarian, filter, dan dialog detail/poster.
 - `css/style.css`: gaya visual, tema terang/gelap, dan layout responsif.
-- `js/data.js`: lima contoh kompetisi dan empat kategori awal.
-- `js/app.js`: pencarian, pengurutan, bookmark, status pendaftaran, dan pengelolaan data lokal.
+- `js/data.js`: kategori awal (data lomba diambil dari Sheets).
+- `js/app.js`: pencarian, pengurutan, bookmark, status pendaftaran, dan render kartu.
+- `js/sheets.js`: pembaca Google Sheets (read-only) + normalisasi link poster Drive.
+- `apps-script/Code.gs`: backend Apps Script (utama: endpoint baca `?action=list`).
 - `assets/radian-logo.png`: identitas Radian.
 
 ## Menjalankan
@@ -26,42 +30,49 @@ Buka `index.html` langsung di browser, atau sajikan folder ini menggunakan serve
 - Layout lima kolom pada layar desktop lebar, empat atau tiga kolom pada desktop lebih kecil, dua pada tablet, dan satu pada HP.
 - Panel pencarian dan filter mengikuti alur halaman saat digulir, sehingga kartu lomba tidak tertutup.
 - Label aksesibilitas, indikator fokus, notifikasi hasil pencarian, dan dukungan reduced motion.
-- Mode admin melalui `#admin` untuk menambah, mengedit, dan menghapus data lokal.
 - Hero dihapus (Okt 2026) agar katalog ringkas; skip-link mengarah ke `#eksplor`.
+
+## Cara mengisi data (Google Sheets)
+
+Baris pertama (header) pada sheet bernama `lomba`:
+
+```
+id | judul | penyelenggara | kategori | poster_url | link_pendaftaran | tanggal_mulai | tanggal_selesai | biaya | deskripsi | created_at
+```
+
+- `id`: unik, bebas (mis. `lomba-2026-001`).
+- `biaya`: angka rupiah; isi `0` untuk gratis.
+- `tanggal_mulai` / `tanggal_selesai`: format `YYYY-MM-DD`.
+- `poster_url`: **link Google Drive** (lihat di bawah) atau URL gambar biasa.
+
+Situs akan menampilkan perubahan begitu halaman dimuat ulang.
+
+## Poster dari Google Drive
+
+Poster disimpan di folder Drive, lalu **tempel link share-nya** ke kolom `poster_url`. Semua varian link berikut otomatis dinormalkan menjadi URL gambar yang bisa tampil:
+
+- `https://drive.google.com/file/d/<ID>/view?usp=drive_link`
+- `https://drive.google.com/open?id=<ID>`
+- `https://drive.google.com/uc?id=<ID>&export=view`
+- `https://drive.google.com/thumbnail?id=<ID>&sz=w1280`
+
+Pastikan file di Drive berbagi **"Anyone with the link (Viewer)"** agar gambar tampil untuk pengunjung.
 
 ## Verifikasi manual (static, tanpa npm)
 
 1. Buka `index.html` via server statis lokal (mis. `python3 -m http.server` / VS Code Live Server).
 2. Load, cari, filter kategori/status/biaya, sort deadline/nama/biaya.
 3. Simpan favorit, reload (persist), mode gelap/terang.
-4. `#admin` PIN salah 5x → rate-limit 1 menit; PIN benar → bar admin muncul, sesi 1 jam.
-5. Tambah/edit/hapus sebagai non-admin harus gagal (toast "Akses ditolak").
-6. Poster upload dikompresi otomatis (<800KB target); localStorage >4.5MB ditolak dengan toast.
+4. Tambah baris lomba baru di sheet (termasuk poster Drive) → reload → muncul di katalog dan poster tampil saat diklik/di-zoom.
 
-## Backend data (Okt 2026): Google Sheets + Drive
+## Backend (Okt 2026): Google Sheets + Drive
 
-Backend aktif: **Sheets** (`DATA_BACKEND = "sheets"` di `js/app.js`).
-Setup 5 menit di `apps-script/README.md` (Sheet + folder Drive + deploy Web app),
-lalu isi `endpoint` + `token` di `js/sheets.js`.
+Backend: **Sheets** (satu endpoint Apps Script, baca publik `?action=list`).
+Setup ada di `apps-script/README.md`.
 
-- Poster diupload ke **Drive** (`thumbnail` link), yang masuk Sheet hanya string URL.
-- Tanpa `endpoint`, app otomatis fallback ke Supabase/read lokal — tidak ada yang rusak.
-- Backend lama (Supabase) tetap ada di `js/supabase.js`; ganti `DATA_BACKEND`
-  ke `"supabase"` untuk kembali kapan saja.
+- Frontend hanya membaca; **tidak ada token/rahasia** di repo.
+- Poster disimpan di Drive (folder `1uTWm-CkII_fhhKQRIQYPRIm_WqICOIgI`); kolom `poster_url` berisi link Drive.
+- `apps-script/Code.gs` masih menyediakan action tulis (`upload`/`upsert`/`delete`, ber-token) yang hanya dipakai untuk migrasi/alat bantu, bukan oleh situs.
+- Backend Supabase lama sudah **dihapus** (folder `supabase/`, `js/supabase.js`).
 
-## Catatan backend Supabase (nonaktif saat ini)
-Tulis cloud berlapis: Edge Function terotentikasi dulu (`secureLombaWrite`),
-fallback tulis langsung via anonKey selama RLS masih longgar. Bila cloud tak
-terjangkau, edit/hapus/tambah dicatat sebagai overlay lokal (bertahan saat refresh).
-Lihat `supabase/rls.sql` (RLS: read publik, write hanya service_role) — setelah
-dijalankan, fallback langsung otomatis ditolak server dan wajib Edge Function.
-Bookmark, tema, dan data lokal memakai safe-storage (fallback memori bila localStorage diblokir).
-
-Akses administrator: verifikasi hash SHA-256 (plaintext tidak disimpan di repo), rate-limit
-5x/menit + lockout 1 menit, sesi kedaluwarsa 1 jam, adminTopBar tersembunyi secara default.
-
-Cleanup DB 10 Okt 2026: baris dummy "Nasi" dihapus via API; tidak ditemukan judul
-"Chalange" (sudah "Challenge"); deskripsi URL mentah di-linkify aman saat render
-(escape + link, bukan HTML mentah di DB).
-
-Font, ikon Font Awesome, dan gambar contoh menggunakan sumber eksternal. Apabila gambar gagal dimuat, kartu menampilkan placeholder.
+Font, ikon Font Awesome, dan sebagian gambar contoh menggunakan sumber eksternal. Apabila gambar gagal dimuat, kartu menampilkan placeholder.

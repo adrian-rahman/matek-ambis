@@ -1,6 +1,9 @@
 /**
  * Matek Ambis - Portal Informasi Lomba & Olimpiade
- * Core Application Logic (App.js)
+ * Core Application Logic (App.js) — versi read-only (data dari Google Sheets)
+ *
+ * Data lomba dikelola langsung di Google Sheets, poster di Google Drive.
+ * Frontend hanya menampilkan (tidak ada admin / tulis ke cloud).
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -9,87 +12,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // ========================================================================
   const STORAGE_KEYS = {
     LOMBA_DATA: "matek_ambis_lomba_data",
-    LOMBA_OVERRIDES: "matek_ambis_lomba_overrides",
-    LOMBA_DELETED: "matek_ambis_lomba_deleted",
     FAVORITES: "matek_ambis_favorites",
     THEME: "matek_ambis_theme",
-    CATEGORIES: "matek_ambis_categories",
-    ADMIN_FLAG: "matek_ambis_admin",
-    ADMIN_EXP: "matek_ambis_admin_exp",
-    ADMIN_TOKEN: "matek_ambis_admin_token"
+    CATEGORIES: "matek_ambis_categories"
   };
 
-  function isCloudSyncEnabled() {
-    return (typeof secureLombaWrite === "function" &&
-      typeof SUPABASE_CONFIG !== "undefined" && !!SUPABASE_CONFIG.writeEndpoint);
-  }
-
-  // Backend data: "sheets" (Google Sheets + Drive) atau "supabase".
-  // Lihat apps-script/README.md untuk setup Sheets.
-  const DATA_BACKEND = "sheets";
-
-  function backendFetch() {
-    if (DATA_BACKEND === "sheets" && typeof fetchLombaFromSheets === "function") {
-      return fetchLombaFromSheets();
-    }
-    return fetchLombaFromSupabase();
-  }
-
-  // Tulis cloud berlapis: Edge Function dulu, lalu tulis langsung (selama RLS longgar).
-  // Kembalikan "edge"/"direct"; "local" bila cloud tak terjangkau (fallback overlay lokal).
-  // Error Edge Function dilempar (fatal); error tulis langsung → fallback "local".
-  async function tryCloudWrite(action, item) {
-    if (isCloudSyncEnabled()) {
-      await secureLombaWrite(action, item);
-      return "edge";
-    }
-    if (DATA_BACKEND === "sheets" && typeof sheetsEnabled === "function" && sheetsEnabled()) {
-      if (action === "insert" && typeof upsertLombaToSheets === "function") {
-        await upsertLombaToSheets(item);
-      } else if (action === "update" && typeof upsertLombaToSheets === "function") {
-        await upsertLombaToSheets(item);
-      } else if (action === "delete" && typeof deleteLombaFromSheets === "function") {
-        await deleteLombaFromSheets(item.id);
-      } else {
-        return "local";
-      }
-      return "direct";
-    }
-    try {
-      if (action === "insert" && typeof insertLombaToSupabase === "function") {
-        await insertLombaToSupabase(item);
-      } else if (action === "update" && typeof updateLombaInSupabase === "function") {
-        await updateLombaInSupabase(item.id, item);
-      } else if (action === "delete" && typeof deleteLombaFromSupabase === "function") {
-        await deleteLombaFromSupabase(item.id);
-      } else {
-        return "local";
-      }
-      return "direct";
-    } catch (err) {
-      console.warn("Tulis cloud langsung gagal, fallback lokal:", err);
-      return "local";
-    }
-  }
-
-  // Hash SHA-256 password admin (plaintext TIDAK disimpan di repo).
-  const ADMIN_PASSWORD_HASH = "ae2e3d42acbb002987a27fdfe1e1af33b45fc276841a02d90ad6147ef8baf395";
-
-  const ADMIN_SECURITY = {
-    MAX_ATTEMPTS_PER_MINUTE: 5,
-    ATTEMPT_WINDOW_MS: 60 * 1000,
-    LOCKOUT_MS: 60 * 1000,
-    SESSION_TTL_MS: 60 * 60 * 1000 // 1 jam
-  };
-  let adminLoginAttempts = []; // timestamp ms
-  let adminLockedUntil = 0;
-
-  async function sha256(message) {
-    const msgBuffer = new TextEncoder().encode(message);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-  }
+  const FALLBACK_POSTER = "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop&q=80";
 
   // --- Safe storage: fallback memory bila localStorage gagal (mis. SecurityError) ---
   const memoryStore = new Map();
@@ -114,38 +42,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
   }
-  function safeRemove(key) {
-    memoryStore.delete(key);
-    try { localStorage.removeItem(key); } catch (e) { /* abaikan */ }
-  }
 
-  function isAdminSessionValid() {
-    try {
-      if (sessionStorage.getItem(STORAGE_KEYS.ADMIN_FLAG) !== "true") return false;
-      const exp = Number(sessionStorage.getItem(STORAGE_KEYS.ADMIN_EXP) || "0");
-      if (!exp || Date.now() > exp) {
-        sessionStorage.removeItem(STORAGE_KEYS.ADMIN_FLAG);
-        sessionStorage.removeItem(STORAGE_KEYS.ADMIN_EXP);
-        sessionStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
-        return false;
-      }
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-  let isAdmin = isAdminSessionValid();
-
-  // Load custom/initial data from LocalStorage
   let customCategories = loadCategories();
   let allLomba = loadLombaData();
   let favoriteIds = new Set(loadFavoritesData());
-  // Overlay lokal: edit & hapus yang belum tersinkron ke cloud (bertahan saat refresh).
-  let localOverrides = loadOverrides();
-  let deletedIds = new Set(loadDeletedIds());
   let currentTab = "all"; // 'all' | 'saved'
   let activeModalLombaId = null;
-  let currentPosterDataUrl = "";
 
   // Filter state
   const filterState = {
@@ -163,7 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
     lombaGrid: document.getElementById("lombaGrid"),
     resultsBadge: document.getElementById("resultsCountBadge"),
     savedCountBadge: document.getElementById("savedCountBadge"),
-    
+
     // Search & Filters
     heroSearchInput: document.getElementById("heroSearchInput"),
     clearSearchBtn: document.getElementById("clearSearchBtn"),
@@ -177,17 +79,6 @@ document.addEventListener("DOMContentLoaded", () => {
     tabAllLomba: document.getElementById("tabAllLomba"),
     tabSavedLomba: document.getElementById("tabSavedLomba"),
     themeToggleBtn: document.getElementById("themeToggleBtn"),
-
-    // Admin Controls
-    adminTopBar: document.getElementById("adminTopBar"),
-    adminAddLombaBtn: document.getElementById("adminAddLombaBtn"),
-    adminLogoutBtn: document.getElementById("adminLogoutBtn"),
-    adminPinModal: document.getElementById("adminPinModal"),
-    adminPinForm: document.getElementById("adminPinForm"),
-    adminPinInput: document.getElementById("adminPinInput"),
-    pinErrorMsg: document.getElementById("pinErrorMsg"),
-    closePinModalBtn: document.getElementById("closePinModalBtn"),
-    cancelPinBtn: document.getElementById("cancelPinBtn"),
 
     // Lightbox Modal
     lightboxModal: document.getElementById("lightboxModal"),
@@ -213,30 +104,6 @@ document.addEventListener("DOMContentLoaded", () => {
     modalRegisterBtn: document.getElementById("modalRegisterBtn"),
     modalBookmarkActionBtn: document.getElementById("modalBookmarkActionBtn"),
 
-    // Submit / Edit Modal
-    submitModal: document.getElementById("submitModal"),
-    modalSubmitTitle: document.getElementById("modalSubmitTitle"),
-    closeSubmitModalBtn: document.getElementById("closeSubmitModalBtn"),
-    cancelSubmitBtn: document.getElementById("cancelSubmitBtn"),
-    submitLombaForm: document.getElementById("submitLombaForm"),
-    submitFormBtn: document.getElementById("submitFormBtn"),
-    formLombaId: document.getElementById("formLombaId"),
-    formJudul: document.getElementById("formJudul"),
-    formPenyelenggara: document.getElementById("formPenyelenggara"),
-    formKategori: document.getElementById("formKategori"),
-    formKategoriCustomWrap: document.getElementById("formKategoriCustomWrap"),
-    formKategoriCustom: document.getElementById("formKategoriCustom"),
-    formPosterFile: document.getElementById("formPosterFile"),
-    formPosterUrl: document.getElementById("formPosterUrl"),
-    formPosterPreviewBox: document.getElementById("formPosterPreviewBox"),
-    formPosterPreviewImg: document.getElementById("formPosterPreviewImg"),
-    removePosterBtn: document.getElementById("removePosterBtn"),
-    formLinkDaftar: document.getElementById("formLinkDaftar"),
-    formTanggalMulai: document.getElementById("formTanggalMulai"),
-    formTanggalSelesai: document.getElementById("formTanggalSelesai"),
-    formBiayaNominal: document.getElementById("formBiayaNominal"),
-    formDeskripsi: document.getElementById("formDeskripsi"),
-
     // Toast Container
     toastContainer: document.getElementById("toastContainer")
   };
@@ -247,17 +114,13 @@ document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   setupDialogLightDismissFallbacks([
     elements.detailModal,
-    elements.submitModal,
-    elements.adminPinModal,
     elements.lightboxModal
   ]);
   syncCategoriesWithLomba();
   renderFilterCategoryOptions();
-  renderFormCategoryOptions();
-  checkAdminHashRoute();
   renderLombaList();
   setupEventListeners();
-  initDataFromSupabase();
+  loadDataFromBackend();
 
   // ========================================================================
   // 4. Data Loading & Persistence
@@ -291,9 +154,7 @@ document.addEventListener("DOMContentLoaded", () => {
         changed = true;
       }
     });
-    if (changed) {
-      saveCategories(customCategories);
-    }
+    if (changed) saveCategories(customCategories);
   }
 
   function loadLombaData() {
@@ -306,45 +167,33 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {
       console.warn("Gagal memuat data dari localStorage:", e);
     }
-    return [];
+    return [...DEFAULT_LOMBA];
   }
 
-  async function initDataFromSupabase() {
-    let remoteData = null;
+  // Ambil data terbaru dari Google Sheets (read-only). Cache lokal dipakai
+  // sebagai tampilan awal / fallback bila jaringan gagal.
+  async function loadDataFromBackend() {
     try {
-      remoteData = await backendFetch();
+      const remoteData = await fetchLombaFromSheets();
       if (Array.isArray(remoteData)) {
-        // Gabung, bukan timpa: item lokal (belum ada di cloud) + edit/hapus lokal dipertahankan.
-        const remoteIds = new Set(remoteData.map(r => r.id));
-        const localOnly = allLomba.filter(l => !remoteIds.has(l.id) && !deletedIds.has(l.id));
-        allLomba = [
-          ...localOnly,
-          ...remoteData
-            .filter(r => !deletedIds.has(r.id))
-            .map(r => (localOverrides[r.id] ? { ...r, ...localOverrides[r.id] } : r))
-        ];
+        allLomba = remoteData;
         saveLombaData();
         syncCategoriesWithLomba();
         renderFilterCategoryOptions();
-        renderFormCategoryOptions();
         renderLombaList();
       }
     } catch (e) {
-      console.warn("Gagal memuat data dari Supabase, menggunakan data lokal:", e);
+      console.warn("Gagal memuat data dari Sheets, memakai cache lokal:", e);
     }
   }
 
   function saveLombaData() {
     try {
       const json = JSON.stringify(allLomba);
-      // Cegah jebol kuota ~5MB: tolak simpan bila >4.5MB
-      if (json.length > 4.5 * 1024 * 1024) {
-        showToast("Data terlalu besar untuk penyimpanan lokal; poster dikompresi otomatis.", "danger");
-        return;
-      }
+      if (json.length > 4.5 * 1024 * 1024) return; // jaga kuota ~5MB
       safeSet(STORAGE_KEYS.LOMBA_DATA, json);
     } catch (e) {
-      console.error("Gagal menyimpan data lomba ke localStorage:", e);
+      console.error("Gagal menyimpan cache data lomba:", e);
     }
   }
 
@@ -361,42 +210,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return [];
   }
 
-  function loadOverrides() {
-    try {
-      const parsed = JSON.parse(safeGet(STORAGE_KEYS.LOMBA_OVERRIDES) || "{}");
-      if (parsed && typeof parsed === "object") return parsed;
-    } catch (e) {
-      console.warn("Gagal memuat override lokal:", e);
-    }
-    return {};
-  }
-
-  function saveOverrides() {
-    try {
-      safeSet(STORAGE_KEYS.LOMBA_OVERRIDES, JSON.stringify(localOverrides));
-    } catch (e) {
-      console.error("Gagal menyimpan override lokal:", e);
-    }
-  }
-
-  function loadDeletedIds() {
-    try {
-      const parsed = JSON.parse(safeGet(STORAGE_KEYS.LOMBA_DELETED) || "[]");
-      if (Array.isArray(parsed)) return parsed;
-    } catch (e) {
-      console.warn("Gagal memuat daftar hapus lokal:", e);
-    }
-    return [];
-  }
-
-  function saveDeletedIds() {
-    try {
-      safeSet(STORAGE_KEYS.LOMBA_DELETED, JSON.stringify(Array.from(deletedIds)));
-    } catch (e) {
-      console.error("Gagal menyimpan daftar hapus lokal:", e);
-    }
-  }
-
   function saveFavoritesData() {
     try {
       safeSet(STORAGE_KEYS.FAVORITES, JSON.stringify(Array.from(favoriteIds)));
@@ -406,10 +219,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ========================================================================
-  // 5. Theme Toggling (Tanpa Notifikasi Toast)
+  // 5. Theme Toggling
   // ========================================================================
   function initTheme() {
-    const savedTheme = safeGet(STORAGE_KEYS.THEME) || 
+    const savedTheme = safeGet(STORAGE_KEYS.THEME) ||
       (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     applyTheme(savedTheme);
   }
@@ -418,8 +231,8 @@ document.addEventListener("DOMContentLoaded", () => {
     document.documentElement.setAttribute("data-theme", theme);
     safeSet(STORAGE_KEYS.THEME, theme);
     if (elements.themeToggleBtn) {
-      elements.themeToggleBtn.innerHTML = theme === "dark" 
-        ? '<i class="fa-solid fa-sun" style="color: #f59e0b;"></i>' 
+      elements.themeToggleBtn.innerHTML = theme === "dark"
+        ? '<i class="fa-solid fa-sun" style="color: #f59e0b;"></i>'
         : '<i class="fa-solid fa-moon"></i>';
       elements.themeToggleBtn.setAttribute("title", theme === "dark" ? "Mode Terang" : "Mode Gelap");
       elements.themeToggleBtn.setAttribute("aria-label", theme === "dark" ? "Aktifkan mode terang" : "Aktifkan mode gelap");
@@ -428,17 +241,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function toggleTheme() {
     const current = document.documentElement.getAttribute("data-theme") || "light";
-    const next = current === "dark" ? "light" : "dark";
-    applyTheme(next);
-    // Notifikasi toast telah dimatikan sesuai permintaan user
+    applyTheme(current === "dark" ? "light" : "dark");
   }
 
   // ========================================================================
-  // 6. Admin Authentication & Hash Routing (#admin)
-  // --- Dialog helpers: sinkron (gesture) + fallback iOS/Safari lama ---
-  function isDialogOpen(d) {
-    return !!d && (d.open || d.hasAttribute("open"));
-  }
+  // 6. Dialog helpers: sinkron (gesture) + fallback iOS/Safari lama
+  // ========================================================================
   function openDialogSafe(d) {
     if (!d) return;
     try {
@@ -458,99 +266,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ========================================================================
-  function checkAdminHashRoute() {
-    // Selalu sembunyi dulu; hanya tampil bila sesi admin valid + tidak kedaluwarsa.
-    if (elements.adminTopBar) elements.adminTopBar.style.display = "none";
-    isAdmin = isAdminSessionValid();
-    const hash = window.location.hash.toLowerCase();
-    if (hash === "#admin") {
-      if (isAdmin) {
-        if (elements.adminTopBar) elements.adminTopBar.style.display = "block";
-      } else {
-        if (elements.adminPinInput) elements.adminPinInput.value = "";
-        if (elements.pinErrorMsg) elements.pinErrorMsg.style.display = "none";
-        if (elements.adminPinModal) {
-          openDialogSafe(elements.adminPinModal);
-          setTimeout(() => elements.adminPinInput && elements.adminPinInput.focus(), 100);
-        }
-      }
-    } else if (isAdmin) {
-      if (elements.adminTopBar) elements.adminTopBar.style.display = "block";
-    }
-  }
-
-  function pruneLoginAttempts() {
-    const cutoff = Date.now() - ADMIN_SECURITY.ATTEMPT_WINDOW_MS;
-    adminLoginAttempts = adminLoginAttempts.filter(t => t > cutoff);
-  }
-
-  async function handleAdminPinSubmit(e) {
-    e.preventDefault();
-    pruneLoginAttempts();
-    if (Date.now() < adminLockedUntil) {
-      const waitS = Math.ceil((adminLockedUntil - Date.now()) / 1000);
-      if (elements.pinErrorMsg) {
-        elements.pinErrorMsg.style.display = "block";
-        elements.pinErrorMsg.textContent = `Terlalu banyak percobaan. Coba lagi dalam ${waitS} detik.`;
-      }
-      return;
-    }
-    if (adminLoginAttempts.length >= ADMIN_SECURITY.MAX_ATTEMPTS_PER_MINUTE) {
-      adminLockedUntil = Date.now() + ADMIN_SECURITY.LOCKOUT_MS;
-      adminLoginAttempts = [];
-      if (elements.pinErrorMsg) {
-        elements.pinErrorMsg.style.display = "block";
-        elements.pinErrorMsg.textContent = "Terlalu banyak percobaan salah. Tunggu 1 menit.";
-      }
-      showToast("Login admin dibatasi sementara (rate-limit).", "danger");
-      return;
-    }
-    const enteredPin = elements.adminPinInput.value.trim();
-    const enteredHash = await sha256(enteredPin);
-
-    if (enteredHash === ADMIN_PASSWORD_HASH) {
-      adminLoginAttempts = [];
-      isAdmin = true;
-      try {
-        sessionStorage.setItem(STORAGE_KEYS.ADMIN_FLAG, "true");
-        sessionStorage.setItem(STORAGE_KEYS.ADMIN_EXP, String(Date.now() + ADMIN_SECURITY.SESSION_TTL_MS));
-        // Token sesi lokal (bukan password). Edge Function harus verifikasi ulang di server.
-        sessionStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, enteredHash.slice(0, 32));
-      } catch (err) { /* sesi memori saja */ }
-      if (elements.pinErrorMsg) elements.pinErrorMsg.style.display = "none";
-      closeDialogSafe(elements.adminPinModal);
-      if (elements.adminTopBar) elements.adminTopBar.style.display = "block";
-      renderLombaList();
-      showToast("Selamat datang, Administrator!", "success");
-    } else {
-      adminLoginAttempts.push(Date.now());
-      if (elements.pinErrorMsg) {
-        elements.pinErrorMsg.style.display = "block";
-        elements.pinErrorMsg.textContent = "Password admin salah. Silakan coba lagi.";
-      }
-      elements.adminPinInput.select();
-    }
-  }
-
-  function logoutAdmin() {
-    isAdmin = false;
-    adminLoginAttempts = [];
-    adminLockedUntil = 0;
-    safeRemove(STORAGE_KEYS.ADMIN_FLAG);
-    try {
-      sessionStorage.removeItem(STORAGE_KEYS.ADMIN_FLAG);
-      sessionStorage.removeItem(STORAGE_KEYS.ADMIN_EXP);
-      sessionStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
-    } catch (e) { /* abaikan */ }
-    if (window.location.hash.toLowerCase() === "#admin") {
-      history.replaceState(null, "", window.location.pathname + window.location.search);
-    }
-    if (elements.adminTopBar) elements.adminTopBar.style.display = "none";
-    renderLombaList();
-    showToast("Berhasil keluar dari Mode Administrator", "info");
-  }
-
-  // ========================================================================
   // 7. Lightbox Poster Preview
   // ========================================================================
   function openLightbox(imageUrl, title = "Poster Lomba") {
@@ -563,10 +278,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ========================================================================
-  // 8. Category dropdowns
+  // 8. Category dropdown
   // ========================================================================
   function getCategoryIcon(catName) {
-    const lower = catName.toLowerCase();
+    const lower = String(catName || "").toLowerCase();
     if (lower.includes("data") || lower.includes("ai")) return "fa-chart-pie";
     if (lower.includes("business") || lower.includes("case")) return "fa-briefcase";
     if (lower.includes("essay") || lower.includes("esai")) return "fa-pen-nib";
@@ -587,107 +302,62 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.filterKategoriSelect.value = currentVal || "semua";
   }
 
-  function renderFormCategoryOptions() {
-    if (!elements.formKategori) return;
-    elements.formKategori.innerHTML = "";
-    customCategories.forEach(cat => {
-      const opt = document.createElement("option");
-      opt.value = cat;
-      opt.textContent = cat;
-      elements.formKategori.appendChild(opt);
-    });
-    const customOpt = document.createElement("option");
-    customOpt.value = "__custom__";
-    customOpt.textContent = "+ Tambah Kategori Sendiri...";
-    elements.formKategori.appendChild(customOpt);
-  }
-
   // ========================================================================
   // 9. Time, Date, & Fee Helpers
   // ========================================================================
+  /**
+   * Parse tanggal dari Sheets. Dua format yang mungkin:
+   * - "YYYY-MM-DD" (sel bertipe tanggal/teks)
+   * - timestamp ISO, mis. "2026-10-18T17:00:00.000Z" (hasil JSON dari Apps Script)
+   * Untuk timestamp, tanggal diambil menurut zona Asia/Jakarta agar sama dengan
+   * yang tampil di Sheets (18 Okt 17:00Z = 19 Okt 00:00 WIB).
+   */
+  function parseLombaDate(value) {
+    if (!value) return null;
+    const s = String(value).trim();
+
+    const plain = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (plain) return new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
+
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return null;
+
+    // Timestamp ISO → tanggal menurut WIB (UTC+7, tanpa DST).
+    const wib = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+    return new Date(wib.getUTCFullYear(), wib.getUTCMonth(), wib.getUTCDate());
+  }
+
   function formatDateIndo(dateStr) {
     if (!dateStr) return "-";
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString("id-ID", {
-      day: "numeric",
-      month: "short",
-      year: "numeric"
-    });
-  }
-
-  function formatDateRange(startStr, endStr) {
-    if (!startStr && !endStr) return "-";
-    if (!startStr) return formatDateIndo(endStr);
-    if (!endStr) return formatDateIndo(startStr);
-
-    const s = new Date(startStr);
-    const e = new Date(endStr);
-
-    if (isNaN(s.getTime()) || isNaN(e.getTime())) {
-      return `${startStr} - ${endStr}`;
-    }
-
-    const sDay = s.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
-    const eDay = e.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
-    return `${sDay} - ${eDay}`;
-  }
-
-  function startOfDay(d) {
-    const c = new Date(d);
-    c.setHours(0, 0, 0, 0);
-    return c;
+    const d = parseLombaDate(dateStr);
+    if (!d) return String(dateStr);
+    return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
   }
 
   function calculateRegistrationStatus(startStr, endStr) {
-    const now = new Date();
-    const todayMid = startOfDay(now);
-    const endMid = endStr ? startOfDay(new Date(`${endStr}T00:00:00`)) : null;
-    const startMid = startStr ? startOfDay(new Date(`${startStr}T00:00:00`)) : null;
+    // Hari ini menurut zona Asia/Jakarta, dibandingkan sebagai tanggal (bukan selisih ms).
+    const todayMid = parseLombaDate(new Date().toISOString());
+    const endMid = parseLombaDate(endStr);
+    const startMid = parseLombaDate(startStr);
 
-    if (startMid && todayMid < startMid) {
-      return {
-        status: "upcoming",
-        label: `Buka ${formatDateIndo(startStr)}`,
-        pillClass: "safe",
-        icon: "fa-calendar"
-      };
+    if (startMid && !isNaN(startMid.getTime()) && todayMid < startMid) {
+      return { status: "upcoming", label: `Buka ${formatDateIndo(startStr)}`, pillClass: "safe", icon: "fa-calendar" };
     }
 
     if (!endMid || isNaN(endMid.getTime())) {
       return { status: "closed", label: "Pendaftaran Ditutup", pillClass: "closed", icon: "fa-ban" };
     }
-    // Perbandingan berbasis tanggal (bukan Math.ceil selisih ms) agar tidak off-by-one.
+
     const diffDays = Math.round((endMid - todayMid) / (1000 * 60 * 60 * 24));
     if (diffDays < 0) {
-      return {
-        status: "closed",
-        label: "Pendaftaran Ditutup",
-        pillClass: "closed",
-        icon: "fa-ban"
-      };
+      return { status: "closed", label: "Pendaftaran Ditutup", pillClass: "closed", icon: "fa-ban" };
     }
     if (diffDays === 0) {
-      return {
-        status: "urgent",
-        label: "Berakhir Hari Ini!",
-        pillClass: "urgent",
-        icon: "fa-fire"
-      };
+      return { status: "urgent", label: "Berakhir Hari Ini!", pillClass: "urgent", icon: "fa-fire" };
     } else if (diffDays <= 7) {
-      return {
-        status: "urgent",
-        label: `Tersisa ${diffDays} Hari`,
-        pillClass: "urgent",
-        icon: "fa-triangle-exclamation"
-      };
+      return { status: "urgent", label: `Tersisa ${diffDays} Hari`, pillClass: "urgent", icon: "fa-triangle-exclamation" };
     } else {
-      return {
-        status: "safe",
-        label: `Tersisa ${diffDays} Hari`,
-        pillClass: "safe",
-        icon: "fa-clock"
-      };
+      return { status: "safe", label: `Tersisa ${diffDays} Hari`, pillClass: "safe", icon: "fa-clock" };
     }
   }
 
@@ -704,17 +374,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // ========================================================================
   function filterAndSortLomba() {
     let results = allLomba.filter(lomba => {
-      // Tab filter (Semua vs Tersimpan)
-      if (currentTab === "saved" && !favoriteIds.has(lomba.id)) {
-        return false;
-      }
+      if (currentTab === "saved" && !favoriteIds.has(lomba.id)) return false;
 
-      // Category filter
-      if (filterState.category !== "semua" && lomba.kategori !== filterState.category) {
-        return false;
-      }
+      if (filterState.category !== "semua" && lomba.kategori !== filterState.category) return false;
 
-      // Search keyword filter (judul, penyelenggara, kategori)
       if (filterState.search.trim() !== "") {
         const query = filterState.search.toLowerCase().trim();
         const matchTitle = (lomba.judul || "").toLowerCase().includes(query);
@@ -724,12 +387,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!matchTitle && !matchOrg && !matchCat && !matchDesc) return false;
       }
 
-      // Biaya filter
       const feeNum = Number(lomba.biaya) || 0;
       if (filterState.biaya === "gratis" && feeNum > 0) return false;
       if (filterState.biaya === "berbayar" && feeNum === 0) return false;
 
-      // Status filter
       if (filterState.status !== "semua") {
         const regStatus = calculateRegistrationStatus(lomba.tanggalMulai, lomba.tanggalSelesai);
         if (filterState.status === "aktif" && !["safe", "urgent"].includes(regStatus.status)) return false;
@@ -741,7 +402,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return true;
     });
 
-    // Sorting
     results.sort((a, b) => {
       if (filterState.sortBy === "deadline-asc") {
         return new Date(a.tanggalSelesai) - new Date(b.tanggalSelesai);
@@ -759,7 +419,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderLombaList() {
     const list = filterAndSortLomba();
 
-    // Update Result Counters
     elements.resultsBadge.textContent = `${list.length} kompetisi${currentTab === "saved" ? " tersimpan" : " ditemukan"}`;
     elements.savedCountBadge.textContent = favoriteIds.size;
     const isDefaultFilter = filterState.search.trim() === "" && filterState.category === "semua" && filterState.biaya === "semua" && filterState.status === "semua" && filterState.sortBy === "deadline-asc" && currentTab === "all";
@@ -775,7 +434,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <h3 class="empty-title">${currentTab === "saved" && favoriteIds.size === 0 ? "Ambis boleh, lupa jangan." : "Belum ketemu yang cocok?"}</h3>
           <p class="empty-desc">
             ${currentTab === "saved" && favoriteIds.size === 0
-              ? "Kamu belum memiliki lomba yang disimpan ke daftar favorit. Tandai ikon bookmark pada kartu lomba untuk menyimpannya di sini!" 
+              ? "Kamu belum memiliki lomba yang disimpan ke daftar favorit. Tandai ikon bookmark pada kartu lomba untuk menyimpannya di sini!"
               : "Coba ubah kata kunci pencarian atau sesuaikan opsi filter kategori untuk menemukan kompetisi lainnya."}
           </p>
           <button type="button" class="cta-btn-sm" id="emptyResetBtn" style="margin: 0 auto;">
@@ -804,7 +463,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const regStatus = calculateRegistrationStatus(lomba.tanggalMulai, lomba.tanggalSelesai);
       const isBookmarked = favoriteIds.has(lomba.id);
       const feeNum = Number(lomba.biaya) || 0;
-      const posterSrc = lomba.posterUrl || "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop&q=80";
+      const posterSrc = lomba.posterUrl || FALLBACK_POSTER;
 
       const card = document.createElement("article");
       card.className = "lomba-card";
@@ -837,18 +496,6 @@ document.addEventListener("DOMContentLoaded", () => {
             <button type="button" class="btn-card-detail" data-action="detail" data-id="${escapeHtml(lomba.id)}" aria-label="Lihat detail ${escapeHtml(lomba.judul)}">Lihat detail <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
             <button type="button" class="btn-copy" data-action="share" data-id="${escapeHtml(lomba.id)}" title="Bagikan info lomba" aria-label="Bagikan ${escapeHtml(lomba.judul)}"><i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i></button>
           </div>
-
-          ${isAdmin ? `
-            <!-- Admin Controls on Card -->
-            <div class="admin-card-actions">
-              <button type="button" class="btn-admin-edit" data-action="edit" data-id="${escapeHtml(lomba.id)}" title="Edit Data Lomba" aria-label="Edit ${escapeHtml(lomba.judul)}">
-                <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> Edit
-              </button>
-              <button type="button" class="btn-admin-delete" data-action="delete" data-id="${escapeHtml(lomba.id)}" title="Hapus Lomba" aria-label="Hapus ${escapeHtml(lomba.judul)}">
-                <i class="fa-solid fa-trash-can" aria-hidden="true"></i> Hapus
-              </button>
-            </div>
-          ` : ''}
         </div>
       `;
 
@@ -868,7 +515,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // 11. Card Event Delegation
   // ========================================================================
   elements.lombaGrid.addEventListener("click", (e) => {
-    // 1. Check if clicked on poster thumbnail
     const posterEl = e.target.closest(".card-poster");
     if (posterEl) {
       e.stopPropagation();
@@ -880,7 +526,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // 2. Check if clicked on action button
     const btn = e.target.closest("button[data-action]");
     if (btn) {
       e.stopPropagation();
@@ -895,26 +540,19 @@ document.addEventListener("DOMContentLoaded", () => {
         toggleBookmark(id);
       } else if (action === "share") {
         shareLomba(lomba);
-      } else if (action === "edit") {
-        openEditModal(lomba);
-      } else if (action === "delete") {
-        handleDeleteLomba(lomba);
       }
       return;
     }
 
-    // 3. Mobile touch-friendly: tapping anywhere on card title or body also opens detail
+    // Mobile: tap judul/isi kartu juga membuka detail
     const cardContent = e.target.closest(".card-content");
     if (cardContent) {
       const card = cardContent.closest(".lomba-card");
       const detailBtn = card ? card.querySelector('button[data-action="detail"]') : null;
       if (detailBtn) {
         e.stopPropagation();
-        const id = detailBtn.dataset.id;
-        const lomba = allLomba.find(item => item.id === id);
-        if (lomba) {
-          openDetailModal(lomba);
-        }
+        const lomba = allLomba.find(item => item.id === detailBtn.dataset.id);
+        if (lomba) openDetailModal(lomba);
       }
     }
   });
@@ -942,9 +580,7 @@ document.addEventListener("DOMContentLoaded", () => {
       (nextBookmark || elements.tabSavedLomba).focus({ preventScroll: true });
     }
 
-    if (activeModalLombaId === id) {
-      updateModalBookmarkButton(id);
-    }
+    if (activeModalLombaId === id) updateModalBookmarkButton(id);
   }
 
   function shareLomba(lomba) {
@@ -959,12 +595,8 @@ document.addEventListener("DOMContentLoaded", () => {
       navigator.share(shareData).catch(() => {});
     } else {
       navigator.clipboard.writeText(`${lomba.judul} (${lomba.kategori}) - Info Lomba di Radian Ambis: ${window.location.href}`)
-        .then(() => {
-          showToast("Tautan info lomba berhasil disalin ke clipboard!", "success");
-        })
-        .catch(() => {
-          showToast("Gagal menyalin tautan", "danger");
-        });
+        .then(() => showToast("Tautan info lomba berhasil disalin ke clipboard!", "success"))
+        .catch(() => showToast("Gagal menyalin tautan", "danger"));
     }
   }
 
@@ -974,15 +606,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function setupDialogLightDismissFallbacks(dialogs) {
     dialogs.forEach(dialog => {
       if (!dialog) return;
-
       dialog.addEventListener("click", (event) => {
-        // Hanya tutup jika yang diklik adalah backdrop di luar kotak modal
-        if (event.target === dialog) {
-          closeDialogSafe(dialog);
-        }
+        if (event.target === dialog) closeDialogSafe(dialog);
       });
     });
-    // Escape menutup dialog (untuk fallback non-native di iOS lama).
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         const open = document.querySelector("dialog[open]");
@@ -997,12 +624,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const regStatus = calculateRegistrationStatus(lomba.tanggalMulai, lomba.tanggalSelesai);
     const feeNum = Number(lomba.biaya) || 0;
 
-    // Header Info
     elements.modalDetailTitle.textContent = lomba.judul;
     elements.modalDetailOrganizer.innerHTML = `<i class="fa-solid fa-building-columns"></i> ${escapeHtml(lomba.penyelenggara)}`;
     elements.modalDetailBiaya.innerHTML = formatFeeText(feeNum);
 
-    // Badges
     elements.modalDetailBadges.innerHTML = `
       <span class="class-badge ${feeNum === 0 ? 'free' : 'paid'}">
         <i class="fa-solid ${feeNum === 0 ? 'fa-gift' : 'fa-ticket'}"></i> ${feeNum === 0 ? 'Gratis' : 'Rp ' + feeNum.toLocaleString('id-ID')}
@@ -1012,7 +637,6 @@ document.addEventListener("DOMContentLoaded", () => {
       </span>
     `;
 
-    // Poster Preview in Modal
     if (lomba.posterUrl) {
       elements.modalDetailPosterWrap.style.display = "flex";
       elements.modalDetailPosterImg.src = lomba.posterUrl;
@@ -1022,29 +646,23 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.modalDetailPosterWrap.style.display = "none";
     }
 
-    // Countdown Badge
     elements.modalDetailCountdown.innerHTML = `
       <span class="countdown-badge ${regStatus.pillClass}" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
         <i class="fa-solid ${regStatus.icon}"></i> ${regStatus.label}
       </span>
     `;
 
-    // Dates
     elements.modalDetailTglMulai.textContent = formatDateIndo(lomba.tanggalMulai);
     elements.modalDetailTglSelesai.textContent = formatDateIndo(lomba.tanggalSelesai);
 
-    // Description (linkify aman + escape untuk cegah XSS)
     elements.modalDetailDesc.innerHTML = lomba.deskripsi
       ? linkifySafe(lomba.deskripsi).replace(/\n/g, "<br>")
       : "Informasi lebih lengkap dapat dilihat langsung pada tautan pendaftaran resmi.";
 
-    // Action Links
     elements.modalRegisterBtn.href = lomba.linkPendaftaran || "./";
     elements.modalRegisterBtn.innerHTML = `<i class="fa-solid fa-arrow-up-right-from-square"></i> ${["upcoming", "closed"].includes(regStatus.status) ? "Lihat situs resmi" : "Daftar sekarang"}`;
 
     updateModalBookmarkButton(lomba.id);
-
-    // Buka sinkron dalam gesture klik (wajib untuk iOS/Safari).
     openDialogSafe(elements.detailModal);
   }
 
@@ -1054,251 +672,12 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.modalBookmarkActionBtn.innerHTML = `
         <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark"></i> ${isBookmarked ? 'Tersimpan' : 'Simpan Lomba'}
       `;
-      if (isBookmarked) {
-        elements.modalBookmarkActionBtn.classList.add("bookmarked");
-      } else {
-        elements.modalBookmarkActionBtn.classList.remove("bookmarked");
-      }
+      elements.modalBookmarkActionBtn.classList.toggle("bookmarked", isBookmarked);
     }
   }
 
   // ========================================================================
-  // 14. Admin CRUD Operations (Tambah, Edit, Hapus)
-  // ========================================================================
-  function showFormPosterPreview(src) {
-    if (src) {
-      elements.formPosterPreviewImg.src = src;
-      elements.formPosterPreviewBox.style.display = "block";
-    } else {
-      elements.formPosterPreviewBox.style.display = "none";
-    }
-  }
-
-  function openCreateModal() {
-    if (!isAdminSessionValid()) {
-      isAdmin = false;
-      if (elements.adminTopBar) elements.adminTopBar.style.display = "none";
-      showToast("Akses ditolak: masuk sebagai admin dahulu.", "danger");
-      return;
-    }
-    renderFormCategoryOptions();
-    elements.submitLombaForm.reset();
-    elements.formLombaId.value = "";
-    elements.modalSubmitTitle.textContent = "Tambah Informasi Lomba";
-    elements.submitFormBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Simpan Lomba';
-    currentPosterDataUrl = "";
-    showFormPosterPreview("");
-
-    elements.formKategoriCustomWrap.style.display = "none";
-    elements.formKategoriCustom.value = "";
-    elements.formBiayaNominal.value = "0";
-
-    const todayStr = new Date().toISOString().split("T")[0];
-    if (elements.formTanggalMulai) elements.formTanggalMulai.value = todayStr;
-    if (elements.formTanggalSelesai) elements.formTanggalSelesai.min = todayStr;
-
-    openDialogSafe(elements.submitModal);
-  }
-
-  function openEditModal(lomba) {
-    if (!isAdminSessionValid()) {
-      showToast("Akses ditolak: mode admin diperlukan.", "danger");
-      return;
-    }
-    renderFormCategoryOptions();
-    elements.submitLombaForm.reset();
-    elements.formLombaId.value = lomba.id;
-    elements.modalSubmitTitle.textContent = "Edit Informasi Lomba";
-    elements.submitFormBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan';
-
-    elements.formJudul.value = lomba.judul || "";
-    elements.formPenyelenggara.value = lomba.penyelenggara || "";
-    
-    // Category select check
-    if (customCategories.includes(lomba.kategori)) {
-      elements.formKategori.value = lomba.kategori;
-      elements.formKategoriCustomWrap.style.display = "none";
-      elements.formKategoriCustom.value = "";
-    } else {
-      elements.formKategori.value = "__custom__";
-      elements.formKategoriCustomWrap.style.display = "block";
-      elements.formKategoriCustom.value = lomba.kategori || "";
-    }
-
-    elements.formLinkDaftar.value = lomba.linkPendaftaran || "";
-    elements.formTanggalMulai.value = lomba.tanggalMulai || "";
-    elements.formTanggalSelesai.value = lomba.tanggalSelesai || "";
-    elements.formBiayaNominal.value = lomba.biaya !== undefined ? lomba.biaya : 0;
-    elements.formDeskripsi.value = lomba.deskripsi || "";
-
-    currentPosterDataUrl = lomba.posterUrl || "";
-    if (currentPosterDataUrl.startsWith("http")) {
-      elements.formPosterUrl.value = currentPosterDataUrl;
-    }
-    showFormPosterPreview(currentPosterDataUrl);
-
-    openDialogSafe(elements.submitModal);
-  }
-
-  async function handleDeleteLomba(lomba) {
-    if (!isAdminSessionValid()) {
-      showToast("Akses ditolak: penghapusan hanya untuk admin.", "danger");
-      return;
-    }
-    const isConfirmed = confirm(`Apakah Anda yakin ingin menghapus lomba "${lomba.judul}"? Tindakan ini tidak dapat dibatalkan.`);
-    if (!isConfirmed) return;
-
-    // Cloud: Edge Function → tulis langsung → fallback lokal.
-    let mode = "local";
-    try {
-      mode = await tryCloudWrite("delete", { id: lomba.id });
-    } catch (err) {
-      console.error("Gagal menghapus via Edge Function:", err);
-      showToast("Gagal menghapus di cloud: " + (err.message || err), "danger");
-      return;
-    }
-    if (mode === "local") {
-      // Tanpa cloud: catat sebagai "terhapus lokal" agar tidak muncul lagi saat refresh.
-      deletedIds.add(lomba.id);
-      saveDeletedIds();
-      delete localOverrides[lomba.id];
-      saveOverrides();
-    } else {
-      delete localOverrides[lomba.id];
-      saveOverrides();
-      deletedIds.delete(lomba.id);
-      saveDeletedIds();
-    }
-
-    allLomba = allLomba.filter(item => item.id !== lomba.id);
-    favoriteIds.delete(lomba.id);
-    saveLombaData();
-    saveFavoritesData();
-    renderLombaList();
-    showToast(mode === "local"
-      ? `Lomba "${lomba.judul.substring(0, 25)}..." dihapus lokal (cloud tak terjangkau).`
-      : `Lomba "${lomba.judul.substring(0, 25)}..." berhasil dihapus`, "info");
-  }
-
-  async function handleFormSubmit(e) {
-    e.preventDefault();
-    if (!isAdminSessionValid()) {
-      showToast("Akses ditolak: hanya admin yang dapat menyimpan.", "danger");
-      return;
-    }
-
-    const editId = elements.formLombaId.value.trim();
-    const judul = elements.formJudul.value.trim();
-    const penyelenggara = elements.formPenyelenggara.value.trim();
-    let kategori = elements.formKategori.value;
-
-    // Handle custom category
-    if (kategori === "__custom__") {
-      const customVal = elements.formKategoriCustom.value.trim();
-      if (!customVal) {
-        showToast("Harap masukkan nama kategori baru!", "danger");
-        elements.formKategoriCustom.focus();
-        return;
-      }
-      kategori = customVal;
-      if (!customCategories.includes(kategori)) {
-        customCategories.push(kategori);
-        saveCategories(customCategories);
-        renderFilterCategoryOptions();
-      }
-    }
-
-    const linkPendaftaran = elements.formLinkDaftar.value.trim();
-    const tanggalMulai = elements.formTanggalMulai.value;
-    const tanggalSelesai = elements.formTanggalSelesai.value;
-    const biaya = parseInt(elements.formBiayaNominal.value, 10) || 0;
-    const deskripsi = elements.formDeskripsi.value.trim();
-
-    if (!judul || !penyelenggara || !tanggalMulai || !tanggalSelesai || !linkPendaftaran) {
-      showToast("Harap isi semua kolom wajib bertanda bintang (*)", "danger");
-      return;
-    }
-
-    const posterUrlToSave = currentPosterDataUrl || "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop&q=80";
-
-    const originalBtnText = elements.submitFormBtn.innerHTML;
-    elements.submitFormBtn.disabled = true;
-    elements.submitFormBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
-
-    try {
-      if (editId) {
-        // Edit existing (lokal dulu; cloud hanya via Edge Function)
-        const updatedItem = {
-          judul,
-          penyelenggara,
-          kategori,
-          posterUrl: posterUrlToSave,
-          linkPendaftaran,
-          tanggalMulai,
-          tanggalSelesai,
-          biaya,
-          deskripsi
-        };
-
-        const mode = await tryCloudWrite("update", { id: editId, ...updatedItem });
-        if (mode === "local") {
-          // Tanpa cloud: simpan sebagai override lokal agar edit bertahan saat refresh.
-          localOverrides[editId] = updatedItem;
-          saveOverrides();
-        } else {
-          delete localOverrides[editId];
-          saveOverrides();
-        }
-
-        const existingIdx = allLomba.findIndex(item => item.id === editId);
-        if (existingIdx !== -1) {
-          allLomba[existingIdx] = {
-            ...allLomba[existingIdx],
-            ...updatedItem
-          };
-          showToast(mode === "local"
-            ? "Perubahan tersimpan lokal (cloud tak terjangkau)."
-            : "Perubahan informasi lomba berhasil disimpan!", "success");
-        }
-      } else {
-        // Create new
-        const newLomba = {
-          id: `lomba-custom-${Date.now()}`,
-          judul,
-          penyelenggara,
-          kategori,
-          posterUrl: posterUrlToSave,
-          linkPendaftaran,
-          tanggalMulai,
-          tanggalSelesai,
-          biaya,
-          deskripsi
-        };
-
-        const mode = await tryCloudWrite("insert", newLomba);
-
-        allLomba.unshift(newLomba);
-        showToast(mode === "local"
-          ? "Lomba baru tersimpan lokal (cloud tak terjangkau)."
-          : "Lomba baru berhasil dipublikasikan!", "success");
-      }
-
-      saveLombaData();
-      renderLombaList();
-
-      elements.submitLombaForm.reset();
-      closeDialogSafe(elements.submitModal);
-    } catch (err) {
-      console.error("Gagal menyimpan data lomba ke Supabase:", err);
-      showToast("Gagal menyimpan ke database: " + (err.message || err), "danger");
-    } finally {
-      elements.submitFormBtn.disabled = false;
-      elements.submitFormBtn.innerHTML = originalBtnText;
-    }
-  }
-
-  // ========================================================================
-  // 15. Toast Notification Helper
+  // 14. Toast Notification Helper
   // ========================================================================
   function showToast(message, type = "info") {
     if (!elements.toastContainer) return;
@@ -1327,15 +706,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ========================================================================
-  // 16. Event Listeners Setup
+  // 15. Event Listeners Setup
   // ========================================================================
   function setupEventListeners() {
-    // Theme toggle (NO TOAST)
-    if (elements.themeToggleBtn) {
-      elements.themeToggleBtn.addEventListener("click", toggleTheme);
-    }
+    if (elements.themeToggleBtn) elements.themeToggleBtn.addEventListener("click", toggleTheme);
 
-    // Search Input & Clear
     if (elements.heroSearchInput) {
       elements.heroSearchInput.addEventListener("input", (e) => {
         filterState.search = e.target.value;
@@ -1354,105 +729,10 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Shortcut keyboard "/" dinonaktifkan sesuai permintaan (Okt 2026).
-
-    // Hash change listener for #admin
-    window.addEventListener("hashchange", checkAdminHashRoute);
-
-    // Admin PIN Form
-    if (elements.adminPinForm) {
-      elements.adminPinForm.addEventListener("submit", handleAdminPinSubmit);
-    }
-
-    if (elements.closePinModalBtn) {
-      elements.closePinModalBtn.addEventListener("click", () => closeDialogSafe(elements.adminPinModal));
-    }
-
-    if (elements.cancelPinBtn) {
-      elements.cancelPinBtn.addEventListener("click", () => closeDialogSafe(elements.adminPinModal));
-    }
-
-    // Admin Bar buttons
-    if (elements.adminAddLombaBtn) {
-      elements.adminAddLombaBtn.addEventListener("click", openCreateModal);
-    }
-
-    if (elements.adminLogoutBtn) {
-      elements.adminLogoutBtn.addEventListener("click", logoutAdmin);
-    }
-
-    // Lightbox Modal
     if (elements.closeLightboxBtn) {
       elements.closeLightboxBtn.addEventListener("click", () => closeDialogSafe(elements.lightboxModal));
     }
 
-    // Form Category custom toggle
-    if (elements.formKategori) {
-      elements.formKategori.addEventListener("change", (e) => {
-        if (e.target.value === "__custom__") {
-          elements.formKategoriCustomWrap.style.display = "block";
-          elements.formKategoriCustom.focus();
-        } else {
-          elements.formKategoriCustomWrap.style.display = "none";
-          elements.formKategoriCustom.value = "";
-        }
-      });
-    }
-
-    // Poster file input (kompresi agar hemat kuota localStorage/Storage)
-    if (elements.formPosterFile) {
-      elements.formPosterFile.addEventListener("change", async (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (file) {
-          if (!file.type.startsWith("image/")) {
-            showToast("File harus berupa gambar.", "danger");
-            elements.formPosterFile.value = "";
-            return;
-          }
-          try {
-            const compressed = await compressImageFile(file, 1280, 0.82);
-            // Backend Sheets: upload ke Drive, yang disimpan hanya URL-nya.
-            if (DATA_BACKEND === "sheets" && typeof sheetsEnabled === "function" && sheetsEnabled()
-              && typeof uploadPosterToSheets === "function") {
-              showToast("Mengupload poster ke Drive...", "info");
-              currentPosterDataUrl = await uploadPosterToSheets(compressed, file.name);
-            } else {
-              currentPosterDataUrl = compressed;
-            }
-            showFormPosterPreview(currentPosterDataUrl);
-            if (elements.formPosterUrl) elements.formPosterUrl.value = "";
-          } catch (err) {
-            console.error("Gagal memproses poster:", err);
-            showToast("Gagal memproses/mengupload poster: " + (err.message || err), "danger");
-            elements.formPosterFile.value = "";
-          }
-        }
-      });
-    }
-
-    // Poster URL input
-    if (elements.formPosterUrl) {
-      elements.formPosterUrl.addEventListener("input", (e) => {
-        const val = e.target.value.trim();
-        if (val) {
-          currentPosterDataUrl = val;
-          showFormPosterPreview(currentPosterDataUrl);
-          if (elements.formPosterFile) elements.formPosterFile.value = "";
-        }
-      });
-    }
-
-    // Remove Poster button in form
-    if (elements.removePosterBtn) {
-      elements.removePosterBtn.addEventListener("click", () => {
-        currentPosterDataUrl = "";
-        if (elements.formPosterFile) elements.formPosterFile.value = "";
-        if (elements.formPosterUrl) elements.formPosterUrl.value = "";
-        showFormPosterPreview("");
-      });
-    }
-
-    // Filter Kategori Dropdown
     if (elements.filterKategoriSelect) {
       elements.filterKategoriSelect.addEventListener("change", (e) => {
         filterState.category = e.target.value;
@@ -1460,7 +740,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Pilihan biaya: tombol yang aktif dapat ditekan lagi untuk menampilkan semuanya.
     elements.feePills.forEach(button => {
       button.addEventListener("click", () => {
         filterState.biaya = filterState.biaya === button.dataset.fee ? "semua" : button.dataset.fee;
@@ -1469,7 +748,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    // Status Filter
     if (elements.filterStatus) {
       elements.filterStatus.addEventListener("change", (e) => {
         filterState.status = e.target.value;
@@ -1477,7 +755,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Sort Dropdown
     if (elements.sortBySelect) {
       elements.sortBySelect.addEventListener("change", (e) => {
         filterState.sortBy = e.target.value;
@@ -1485,44 +762,19 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Reset filters
-    if (elements.resetFiltersBtn) {
-      elements.resetFiltersBtn.addEventListener("click", resetAllFilters);
-    }
+    if (elements.resetFiltersBtn) elements.resetFiltersBtn.addEventListener("click", resetAllFilters);
 
-    // Tabs: All vs Saved
-    if (elements.tabAllLomba) {
-      elements.tabAllLomba.addEventListener("click", () => switchTab("all"));
-    }
+    if (elements.tabAllLomba) elements.tabAllLomba.addEventListener("click", () => switchTab("all"));
+    if (elements.tabSavedLomba) elements.tabSavedLomba.addEventListener("click", () => switchTab("saved"));
 
-    if (elements.tabSavedLomba) {
-      elements.tabSavedLomba.addEventListener("click", () => switchTab("saved"));
-    }
-
-    // Detail Modal Actions
     if (elements.closeDetailModalBtn) {
       elements.closeDetailModalBtn.addEventListener("click", () => closeDialogSafe(elements.detailModal));
     }
 
     if (elements.modalBookmarkActionBtn) {
       elements.modalBookmarkActionBtn.addEventListener("click", () => {
-        if (activeModalLombaId) {
-          toggleBookmark(activeModalLombaId);
-        }
+        if (activeModalLombaId) toggleBookmark(activeModalLombaId);
       });
-    }
-
-    // Submit Modal Actions
-    if (elements.closeSubmitModalBtn) {
-      elements.closeSubmitModalBtn.addEventListener("click", () => closeDialogSafe(elements.submitModal));
-    }
-
-    if (elements.cancelSubmitBtn) {
-      elements.cancelSubmitBtn.addEventListener("click", () => closeDialogSafe(elements.submitModal));
-    }
-
-    if (elements.submitLombaForm) {
-      elements.submitLombaForm.addEventListener("submit", handleFormSubmit);
     }
   }
 
@@ -1566,7 +818,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ========================================================================
-  // 17. Utility Helpers
+  // 16. Utility Helpers
   // ========================================================================
   function escapeHtml(str) {
     if (!str) return "";
@@ -1585,42 +837,5 @@ document.addEventListener("DOMContentLoaded", () => {
       /(https?:\/\/[^\s<>"']+)/g,
       '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
     );
-  }
-
-  // Kompresi gambar via canvas: batasi sisi terpanjang + kualitas JPEG.
-  function compressImageFile(file, maxDim = 1280, quality = 0.82) {
-    return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        let { width, height } = img;
-        const scale = Math.min(1, maxDim / Math.max(width, height));
-        width = Math.round(width * scale);
-        height = Math.round(height * scale);
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-        // Target < ~800KB: turunkan kualitas bertahap bila perlu.
-        let q = quality;
-        let dataUrl = canvas.toDataURL("image/jpeg", q);
-        while (dataUrl.length > 800 * 1024 && q > 0.5) {
-          q -= 0.1;
-          dataUrl = canvas.toDataURL("image/jpeg", q);
-        }
-        if (dataUrl.length > 4.5 * 1024 * 1024) {
-          reject(new Error("Gambar masih terlalu besar setelah kompresi."));
-          return;
-        }
-        resolve(dataUrl);
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error("File gambar tidak valid."));
-      };
-      img.src = url;
-    });
   }
 });

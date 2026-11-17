@@ -1407,6 +1407,45 @@ input[type="file"].form-input::file-selector-button {
   transform: scale(1.03);
 }
 
+/* Lomba yang pendaftarannya sudah tutup: poster jadi abu-abu + stempel */
+.lomba-card.is-closed .card-poster img {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+.lomba-card.is-closed:hover .card-poster img {
+  transform: none;
+}
+
+.poster-closed-stamp {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(39, 39, 42, 0.34);
+  pointer-events: none;
+}
+
+.poster-closed-stamp-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border: 2px solid rgba(244, 244, 245, 0.8);
+  border-radius: 8px;
+  background: rgba(63, 63, 70, 0.55);
+  color: #f4f4f5;
+  font-family: "Outfit", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  transform: rotate(-4deg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(2px);
+}
+
 .poster-zoom-hint {
   position: absolute;
   bottom: 6px;
@@ -2022,4 +2061,12 @@ body:has(dialog[open]) { overflow: hidden; }
   .fee-pill { min-width: 76px; min-height: 32px; padding: 5px 10px; font-size: 10px; }
   .card-poster { height: 255px; }
   .card-content { padding-top: 14px; }
+}
+
+/* Stempel lomba tutup: sesuaikan ukuran pada kartu sempit / layar kecil */
+@media (min-width: 1200px) {
+  .poster-closed-stamp-label { font-size: 9px; padding: 5px 8px; gap: 4px; }
+}
+@media (max-width: 560px) {
+  .poster-closed-stamp-label { font-size: 10px; padding: 6px 11px; }
 }

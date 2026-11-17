@@ -413,7 +413,16 @@ document.addEventListener("DOMContentLoaded", () => {
       return 0;
     });
 
-    return results;
+    // Lomba yang pendaftarannya sudah tutup selalu didorong ke belakang,
+    // apa pun opsi urutan yang dipilih pengunjung.
+    const masihBuka = [];
+    const sudahTutup = [];
+    results.forEach(lomba => {
+      const status = calculateRegistrationStatus(lomba.tanggalMulai, lomba.tanggalSelesai).status;
+      (status === "closed" ? sudahTutup : masihBuka).push(lomba);
+    });
+
+    return [...masihBuka, ...sudahTutup];
   }
 
   function renderLombaList() {
@@ -464,9 +473,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const isBookmarked = favoriteIds.has(lomba.id);
       const feeNum = Number(lomba.biaya) || 0;
       const posterSrc = lomba.posterUrl || FALLBACK_POSTER;
+      const isClosed = regStatus.status === "closed";
 
       const card = document.createElement("article");
-      card.className = "lomba-card";
+      card.className = "lomba-card" + (isClosed ? " is-closed" : "");
       card.setAttribute("aria-label", `Kompetisi: ${lomba.judul} oleh ${lomba.penyelenggara}`);
       card.innerHTML = `
         <div>
@@ -474,6 +484,10 @@ document.addEventListener("DOMContentLoaded", () => {
             <button type="button" class="card-poster" data-action="preview-poster" data-id="${escapeHtml(lomba.id)}" aria-label="Perbesar poster ${escapeHtml(lomba.judul)}">
               <img src="${escapeHtml(posterSrc)}" alt="Poster lomba ${escapeHtml(lomba.judul)}" loading="lazy">
               <span class="poster-zoom-hint"><i class="fa-solid fa-expand" aria-hidden="true"></i> Lihat poster</span>
+              ${isClosed ? `
+              <span class="poster-closed-stamp" aria-hidden="true">
+                <span class="poster-closed-stamp-label"><i class="fa-solid fa-lock"></i> Pendaftaran Tutup</span>
+              </span>` : ''}
             </button>
             <span class="class-badge ${feeNum === 0 ? 'free' : 'paid'}">${feeNum === 0 ? 'Gratis' : 'Rp ' + feeNum.toLocaleString('id-ID')}</span>
             <button type="button" class="btn-bookmark ${isBookmarked ? 'bookmarked' : ''}" data-action="bookmark" data-id="${escapeHtml(lomba.id)}" aria-pressed="${isBookmarked}" aria-label="${isBookmarked ? 'Hapus dari tersimpan' : 'Simpan lomba'}: ${escapeHtml(lomba.judul)}" title="${isBookmarked ? 'Hapus dari tersimpan' : 'Simpan lomba'}">
